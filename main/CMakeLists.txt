@@ -1,0 +1,16 @@
+idf_component_register(SRCS 
+"esc.c"
+"dshot_esc_encoder.c"
+"control_algorithm.c"
+"ppm.c"
+"comminication.c"
+"ublox.c"
+"tf_luna.c"
+"nav_comm.c"
+"main.c"
+"filters.c"
+"gpio.c"
+"i2c.c"
+"nv_storage.c"
+"uart.c"
+INCLUDE_DIRS ".")
