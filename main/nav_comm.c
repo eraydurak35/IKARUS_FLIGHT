@@ -82,17 +82,12 @@ void parse_nav_data(uart_data_t *uart_buff)
                     if (validate_checksum(read_buffer, data1_size) == 1)
                     {
                         memcpy(data1_ptr, read_buffer, data1_size);
-                        state_ptr->pitch_deg = (data1_ptr->pitch / 360.0f) - pitch_trim_deg;
-                        state_ptr->roll_deg = (data1_ptr->roll / 360.0f) - roll_trim_deg;
-                        state_ptr->heading_deg = data1_ptr->heading / 180.0f;
-
-                        state_ptr->pitch_dps = data1_ptr->pitch_dps / 100.0f;
-                        state_ptr->roll_dps = data1_ptr->roll_dps / 100.0f;
-                        state_ptr->yaw_dps = data1_ptr->yaw_dps / 100.0f;
-
-                        // printf("%.2f\n", state_ptr->pitch_deg);
-                        //  logl("0");
-                        //  uart_counter++;
+                        state_ptr->pitch_deg = data1_ptr->pitch - pitch_trim_deg;
+                        state_ptr->roll_deg = data1_ptr->roll - roll_trim_deg;
+                        state_ptr->heading_deg = data1_ptr->heading;
+                        state_ptr->pitch_dps = data1_ptr->pitch_dps;
+                        state_ptr->roll_dps = data1_ptr->roll_dps;
+                        state_ptr->yaw_dps = data1_ptr->yaw_dps;
                     }
                 }
             }

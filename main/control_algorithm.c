@@ -2,8 +2,6 @@
 #include "typedefs.h"
 #include "math.h"
 #include "filters.h"
-//#include "gpio.h"
-
 #include "esc.h"
 
 static radio_t *rc_p;
@@ -263,9 +261,6 @@ static uint8_t outer_control_loop_wp() // 1000 Hz
                         pid.posYIout = -2.0;
                 }
 
-                // pid.posXDout = -config.position_d * (states.velocity_x_ms - pid.velocity_x_ms_prev);
-                // pid.posYDout = -config.position_d * (states.velocity_y_ms - pid.velocity_y_ms_prev);
-
                 target_p->pitch = pid.posXPout + pid.posXIout + pid.posXDout;
                 if (target_p->pitch > pos_pitch_roll_max_deg)
                     target_p->pitch = pos_pitch_roll_max_deg;
@@ -358,9 +353,6 @@ static void outer_control_loop_rc()
                 else if (pid.posYIout < -2.0f)
                     pid.posYIout = -2.0f;
             }
-
-            // pid.posXDout = -config.position_d * (states.velocity_x_ms - pid.velocity_x_ms_prev);
-            // pid.posYDout = -config.position_d * (states.velocity_y_ms - pid.velocity_y_ms_prev);
 
             target_p->pitch = pid.posXPout + pid.posXIout + pid.posXDout;
             if (target_p->pitch > pos_pitch_roll_max_deg)
@@ -640,37 +632,38 @@ static void inner_control_loop() // 1000Hz
 
     // ↓↓↓↓↓↓↓↓↓↓   MOTOR 1 (LEFT BOTTOM)   ↓↓↓↓↓↓↓↓↓↓
     thr.m1 = comp_target_thr - pid.pitchPIDout + pid.rollPIDout + pid.yawPIout;
-    if (thr.m1 <= min_throttle)
+    if (thr.m1 < min_throttle)
         thr.m1 = min_throttle;
-    else if (thr.m1 >= max_throttle)
+    else if (thr.m1 > max_throttle)
         thr.m1 = max_throttle;
     // ↑↑↑↑↑↑↑↑↑↑   MOTOR 1 (LEFT BOTTOM)   ↑↑↑↑↑↑↑↑↑↑
 
     // ↓↓↓↓↓↓↓↓↓↓   MOTOR 2 (LEFT TOP)   ↓↓↓↓↓↓↓↓↓↓
     thr.m2 = comp_target_thr + pid.pitchPIDout + pid.rollPIDout - pid.yawPIout;
-    if (thr.m2 <= min_throttle)
+    if (thr.m2 < min_throttle)
         thr.m2 = min_throttle;
-    else if (thr.m2 >= max_throttle)
+    else if (thr.m2 > max_throttle)
         thr.m2 = max_throttle;
     // ↑↑↑↑↑↑↑↑↑↑   MOTOR 2 (LEFT TOP)   ↑↑↑↑↑↑↑↑↑↑
 
     // ↓↓↓↓↓↓↓↓↓↓   MOTOR 3 (RIGHT BOTTOM)   ↓↓↓↓↓↓↓↓↓↓
     thr.m3 = comp_target_thr - pid.pitchPIDout - pid.rollPIDout - pid.yawPIout;
-    if (thr.m3 <= min_throttle)
+    if (thr.m3 < min_throttle)
         thr.m3 = min_throttle;
-    else if (thr.m3 >= max_throttle)
+    else if (thr.m3 > max_throttle)
         thr.m3 = max_throttle;
     // ↑↑↑↑↑↑↑↑↑↑   MOTOR 3 (RIGHT BOTTOM)   ↑↑↑↑↑↑↑↑↑↑
 
     // ↓↓↓↓↓↓↓↓↓↓   MOTOR 4 (RIGHT TOP)   ↓↓↓↓↓↓↓↓↓↓
     thr.m4 = comp_target_thr + pid.pitchPIDout - pid.rollPIDout + pid.yawPIout;
-    if (thr.m4 <= min_throttle)
+    if (thr.m4 < min_throttle)
         thr.m4 = min_throttle;
-    else if (thr.m4 >= max_throttle)
+    else if (thr.m4 > max_throttle)
         thr.m4 = max_throttle;
     // ↑↑↑↑↑↑↑↑↑↑   MOTOR 4 (RIGHT TOP)   ↑↑↑↑↑↑↑↑↑↑
 
     // ↓↓↓↓↓↓↓↓↓↓   OUTPUT TO THE MOTORS   ↓↓↓↓↓↓↓↓↓↓
+    //write_throttle(0, 0, 0, 0);
     write_throttle((uint16_t)(thr.m1 * 2.0f), (uint16_t)(thr.m2 * 2.0f), (uint16_t)(thr.m3 * 2.0f), (uint16_t)(thr.m4 * 2.0f));
     // ↑↑↑↑↑↑↑↑↑↑   OUTPUT TO THE MOTORS   ↑↑↑↑↑↑↑↑↑↑
 }
@@ -716,18 +709,8 @@ static void arm()
     gps_p->altitude_origin_mm = gps_p->altitude_mm;
     gps_p->longitude_scale = fabs(cosf(gps_p->longitude * DEG_TO_RAD) * 1.1f);
 
-    // prev_LatitudeVelocity = 0;
-    // prev_LongitudeVelocity = 0;
-
-    // prev_Error_North = 0;
-    // prev_Error_East = 0;
-    // isSmooth_RPM_Rise_For_Takeoff = false;
-
-    // Altitude_Bias = INS.Relative_Position_Up;
-
     // if altitude hold mode enabled before arming
     // then when armed, automatically takeoff pre determined altitude
-
     flight_p->takeoff_status = 0;
     if (flight_p->alt_hold_status == 1)
     {

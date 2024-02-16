@@ -46,6 +46,8 @@ static data_1_t data1;
 static data_2_t data2;
 static data_3_t data3;
 
+//static data_1_float_t data1float;
+
 static uint8_t counter1 = 0;
 static uint8_t counter2 = 0;
 
@@ -65,12 +67,12 @@ void task_1(void *pvParameters)
 
     gpio_configure();
     dshot_esc_init();
-    telem.battery_voltage = get_bat_volt() * config.v_sens_gain;
     comminication_init(&gamepad, &config, &waypoint);
     read_config(&config);
     comm_send_conf(&config);
     i2c_master_init(I2C_NUM_0, SDA1, SCL1, 400000, GPIO_PULLUP_DISABLE);
     control_init(&rc, &telem, &flight, &target, &state, &config, &waypoint, &gps);
+    telem.battery_voltage = get_bat_volt() * config.v_sens_gain;
     static uint32_t receivedValue = 0;
     while (1)
     {
@@ -195,7 +197,6 @@ void task_3(void *pvParameters)
 }
 void app_main(void)
 {
-
     xTaskCreatePinnedToCore(&task_3, "task3", 1024 * 4, NULL, 1, &task3_handler, tskNO_AFFINITY);
     xTaskCreatePinnedToCore(&task_2, "task2", 1024 * 4, NULL, 1, &task2_handler, tskNO_AFFINITY);
     xTaskCreatePinnedToCore(&task_1, "task1", 1024 * 4, NULL, 1, &task1_handler, tskNO_AFFINITY);

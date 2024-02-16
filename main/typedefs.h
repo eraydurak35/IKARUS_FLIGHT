@@ -224,15 +224,17 @@ typedef struct
     uint8_t waypoint_mission_status;
 } flight_t;
 
+
 typedef struct
 {
-    int16_t pitch;
-    int16_t roll;
-    uint16_t heading;
-    int16_t pitch_dps;
-    int16_t roll_dps;
-    int16_t yaw_dps;
+  float pitch;
+  float roll;
+  float heading;
+  float pitch_dps;
+  float roll_dps;
+  float yaw_dps;
 } data_1_t;
+
 typedef struct
 {
     int16_t velocity_x_ms;
