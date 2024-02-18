@@ -63,6 +63,8 @@ static data_3_t data3;
 static uint8_t counter1 = 0;
 static uint8_t counter2 = 0;
 
+// this one is first version
+
 void IRAM_ATTR rc_ppm_isr(void *args)
 {
     rc.current_time = esp_timer_get_time();
