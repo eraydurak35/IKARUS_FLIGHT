@@ -49,7 +49,6 @@ void gps_init(gps_t *g)
 
 void parse_gps_data(uart_data_t *data_buff)
 {
-    // static uint8_t data;
     static uint8_t PVT_Message_Found = 0;
     static uint8_t DOP_Message_Found = 0;
     static uint8_t prev_data;
@@ -61,7 +60,6 @@ void parse_gps_data(uart_data_t *data_buff)
 
     for (uint8_t i = 0; i < data_buff->lenght; i++)
     {
-        // data = Serial2.read();
 
         if (PVT_Message_Found == 0 && DOP_Message_Found == 0)
         {
@@ -125,8 +123,6 @@ void parse_gps_data(uart_data_t *data_buff)
                     gps_ptr->eastVel_mms = RecBytes[56] | RecBytes[57] << 8 | RecBytes[58] << 16 | RecBytes[59] << 24;     // mm/s
                     gps_ptr->downVel_mms = RecBytes[60] | RecBytes[61] << 8 | RecBytes[62] << 16 | RecBytes[63] << 24;     // mm/s
                     gps_ptr->headingOfMotion = RecBytes[68] | RecBytes[69] << 8 | RecBytes[70] << 16 | RecBytes[71] << 24; // deg
-
-                    // printf("%d\n", gps_ptr->satCount);
                 }
             }
         }
