@@ -1,8 +1,8 @@
 idf_component_register(SRCS 
+"ibus.c"
 "esc.c"
 "dshot_esc_encoder.c"
 "control_algorithm.c"
-"ppm.c"
 "comminication.c"
 "ublox.c"
 "tf_luna.c"

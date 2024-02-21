@@ -7,18 +7,20 @@
 #include "nv_storage.h"
 #include "nav_comm.h"
 
+uint8_t new_config_received = 0;
+
 static const uint8_t drone_mac_address[6] = {0x04, 0x61, 0x05, 0x05, 0x3A, 0xE4};
 static const uint8_t ground_station_mac_address[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 static esp_now_peer_info_t peerInfo;
 
-static gamepad_t *gamepad_ptr = NULL;
 static config_t *config_ptr = NULL;
 static waypoint_t *waypoint_ptr = NULL;
+static uint8_t *new_config_flag = NULL;
 
 static void espnow_receive_cb(const esp_now_recv_info_t *recv_info, const uint8_t *data, int len);
 static void espnow_send_cb(const uint8_t *mac_addr, esp_now_send_status_t status);
 
-void comminication_init(gamepad_t *gmpd, config_t *cfg, waypoint_t *wp)
+void comminication_init(config_t *cfg, waypoint_t *wp, uint8_t *cfg_flg)
 {
     nvs_flash_init();
     wifi_init_config_t my_config = WIFI_INIT_CONFIG_DEFAULT();
@@ -38,9 +40,9 @@ void comminication_init(gamepad_t *gmpd, config_t *cfg, waypoint_t *wp)
     peerInfo.encrypt = false;
     esp_now_add_peer(&peerInfo);
 
-    gamepad_ptr = gmpd;
     config_ptr = cfg;
     waypoint_ptr = wp;
+    new_config_flag = cfg_flg;
 }
 
 void comm_send_telem(telemetry_t *telem)
@@ -65,7 +67,8 @@ static void espnow_receive_cb(const esp_now_recv_info_t *recv_info, const uint8_
     {
         memcpy(config_ptr, data + 1, sizeof(config_t));
         save_config(config_ptr);
-        send_nav_config();
+        *new_config_flag = 1;
+        //send_nav_config();
     }
     else if (data[0] == 0xFD && len == 226)
     {

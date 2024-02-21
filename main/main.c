@@ -39,13 +39,12 @@
 #include "tf_luna.h"
 #include "ublox.h"
 #include "comminication.h"
-#include "ppm.h"
 #include "control_algorithm.h"
 #include "esc.h"
+#include "ibus.h"
 
 static TaskHandle_t task1_handler;
 static TaskHandle_t task2_handler;
-static TaskHandle_t task3_handler;
 static config_t config;
 static states_t state;
 static flight_t flight;
@@ -53,21 +52,15 @@ static target_t target;
 static telemetry_t telem;
 static range_finder_t range_finder;
 static gps_t gps;
-static gamepad_t gamepad;
-static radio_t rc = {0, 0, 0, 0, 0, {1500, 1500, 1000, 1500, 1000, 1000, 1000, 1000}};
+//static radio_t rc = {0, 0, 0, 0, 0, {1500, 1500, 1000, 1500, 1000, 1000, 1000, 1000}};
+
+static ibus_t radio = {1500, 1500, 1000, 1500, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000};
 static waypoint_t waypoint = {{0}, {0}, {0}, -1, 1};
-static data_1_t data1;
-static data_2_t data2;
-static data_3_t data3;
+static nav_data_t nav_data;
 
 static uint8_t counter1 = 0;
 static uint8_t counter2 = 0;
-
-void IRAM_ATTR rc_ppm_isr(void *args)
-{
-    rc.current_time = esp_timer_get_time();
-    rc.ppm_interrupt_flag++;
-}
+static uint8_t new_config_received_flag = 0;
 
 void IRAM_ATTR timer1_callback(void *arg)
 {
@@ -79,18 +72,19 @@ void task_1(void *pvParameters)
 
     gpio_configure();
     dshot_esc_init();
-    comminication_init(&gamepad, &config, &waypoint);
+    comminication_init(&config, &waypoint, &new_config_received_flag);
     read_config(&config);
     comm_send_conf(&config);
     i2c_master_init(I2C_NUM_0, SDA1, SCL1, 400000, GPIO_PULLUP_DISABLE);
-    control_init(&rc, &telem, &flight, &target, &state, &config, &waypoint, &gps);
+    control_init(&radio, &telem, &flight, &target, &state, &config, &waypoint, &gps);
+    nav_comm_init(&nav_data, &state, &range_finder, &flight, &config);
     telem.battery_voltage = get_bat_volt() * config.v_sens_gain;
     static uint32_t receivedValue = 0;
     while (1)
     {
         if (xTaskNotifyWait(0, ULONG_MAX, &receivedValue, 1 / portTICK_PERIOD_MS) == pdTRUE)
         {
-            ppm_parse(&rc);
+            master_send_recv_nav_comm(&new_config_received_flag);
             flight_control();
             counter1++;
             counter2++;
@@ -98,13 +92,11 @@ void task_1(void *pvParameters)
             {
                 counter1 = 0;
                 get_range(&range_finder, &state);
-                send_range();
             }
             if (counter2 >= 100) // 10 Hz
             {
                 counter2 = 0;
                 flight_mode_control();
-                send_flight_status();
 
                 telem.battery_voltage = (get_bat_volt() * config.v_sens_gain) * 0.005f + telem.battery_voltage * 0.995f;
                 telem.pitch = state.pitch_deg;
@@ -113,18 +105,18 @@ void task_1(void *pvParameters)
                 telem.gyro_x_dps = state.pitch_dps;
                 telem.gyro_y_dps = state.roll_dps;
                 telem.gyro_z_dps = state.yaw_dps;
-                telem.acc_x_ms2 = data3.acc_x_ms2 / 100.0f;
-                telem.acc_y_ms2 = data3.acc_y_ms2 / 100.0f;
-                telem.acc_z_ms2 = data3.acc_z_ms2 / 100.0f;
-                telem.imu_temperature = data3.imu_temperature / 100.0f;
+                telem.acc_x_ms2 = nav_data.acc_x_ms2 / 100.0f;
+                telem.acc_y_ms2 = nav_data.acc_y_ms2 / 100.0f;
+                telem.acc_z_ms2 = nav_data.acc_z_ms2 / 100.0f;
+                telem.imu_temperature = nav_data.imu_temperature / 100.0f;
 
-                telem.mag_x_mgauss = data3.mag_x_gauss / 10.0f;
-                telem.mag_y_mgauss = data3.mag_y_gauss / 10.0f;
-                telem.mag_z_mgauss = data3.mag_z_gauss / 10.0f;
+                telem.mag_x_mgauss = nav_data.mag_x_gauss / 10.0f;
+                telem.mag_y_mgauss = nav_data.mag_y_gauss / 10.0f;
+                telem.mag_z_mgauss = nav_data.mag_z_gauss / 10.0f;
 
-                telem.barometer_pressure = data2.barometer_pressure / 10.0f;
-                telem.barometer_temperature = data2.barometer_temperature / 100.0f;
-                telem.altitude = data2.baro_altitude / 100.0f;
+                telem.barometer_pressure = nav_data.barometer_pressure / 10.0f;
+                telem.barometer_temperature = nav_data.barometer_temperature / 100.0f;
+                telem.altitude = nav_data.baro_altitude / 100.0f;
                 telem.altitude_calibrated = state.altitude_m;
                 telem.velocity_x_ms = state.vel_forward_ms;
                 telem.velocity_y_ms = state.vel_right_ms;
@@ -140,9 +132,9 @@ void task_1(void *pvParameters)
                 telem.target_velocity_x_ms = target.velocity_x_ms;
                 telem.target_velocity_y_ms = target.velocity_y_ms;
                 telem.target_velocity_z_ms = target.velocity_z_ms;
-                telem.flow_quality = data2.flow_quality;
-                telem.flow_x_velocity = data2.flow_x_velocity_ms / 10.0f;
-                telem.flow_y_velocity = data2.flow_y_velocity_ms / 10.0f;
+                telem.flow_quality = nav_data.flow_quality;
+                telem.flow_x_velocity = nav_data.flow_x_velocity_ms / 10.0f;
+                telem.flow_y_velocity = nav_data.flow_y_velocity_ms / 10.0f;
                 telem.gps_fix = gps.fix;
                 telem.gps_satCount = gps.satCount;
                 telem.gps_latitude = gps.latitude / 10000000.0f;
@@ -187,40 +179,22 @@ void task_1(void *pvParameters)
 
 void task_2(void *pvParameters)
 {
-    static uart_data_t uart1_data;
-    uart_begin(UART_NUM_1, 5000000, GPIO_NUM_17, GPIO_NUM_16, UART_PARITY_EVEN);
-    nav_comm_init(&state, &flight, &range_finder, &config, &data1, &data2, &data3);
-    while (1)
-    {
-        uart_read(UART_NUM_1, &uart1_data, 1);
-        parse_nav_data(&uart1_data);
-    }
-}
-
-void task_3(void *pvParameters)
-{
     static uart_data_t uart2_data;
+    static uart_data_t uart1_data;
     gps_init(&gps);
+    ibus_init(&radio);
     while (1)
     {
         uart_read(UART_NUM_2, &uart2_data, 10);
+        uart_read(UART_NUM_1, &uart1_data, 10);
+        parse_ibus_data(&uart1_data);
         parse_gps_data(&uart2_data);
     }
 }
 void app_main(void)
 {
-    xTaskCreatePinnedToCore(&task_3, "task3", 1024 * 4, NULL, 1, &task3_handler, tskNO_AFFINITY);
     xTaskCreatePinnedToCore(&task_2, "task2", 1024 * 4, NULL, 1, &task2_handler, tskNO_AFFINITY);
     xTaskCreatePinnedToCore(&task_1, "task1", 1024 * 4, NULL, 1, &task1_handler, tskNO_AFFINITY);
-
-    gpio_pad_select_gpio(GPIO_NUM_35);
-    gpio_set_direction(GPIO_NUM_35, GPIO_MODE_INPUT);
-    gpio_pulldown_dis(GPIO_NUM_35);
-    gpio_pullup_en(GPIO_NUM_35);
-    gpio_set_intr_type(GPIO_NUM_35, GPIO_INTR_POSEDGE);
-
-    gpio_install_isr_service(0);
-    gpio_isr_handler_add(GPIO_NUM_35, rc_ppm_isr, NULL);
 
     esp_timer_handle_t timer1;
     const esp_timer_create_args_t timer1_args =

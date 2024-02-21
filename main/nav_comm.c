@@ -1,216 +1,162 @@
 #include "nav_comm.h"
 #include "typedefs.h"
+#include "driver/spi_master.h"
 #include <string.h>
-#include "uart.h"
+#include "esp_heap_caps.h"
+#include "comminication.h"
 
-#define data1_header1 100
-#define data1_header2 101
-#define data1_footer 102
+static flight_data_t flight_data;
 
-#define data2_header1 90
-#define data2_header2 91
-#define data2_footer 92
-
-#define data3_header1 80
-#define data3_header2 81
-#define data3_footer 82
-
-#define ins_config_header1 70
-#define ins_config_header2 71
-#define ins_config_footer 72
-
-#define flight_header1 60
-#define flight_header2 61
-#define flight_footer 62
-
-#define range_finder_header1 50
-#define range_finder_header2 51
-#define range_finder_footer 52
-
-static flight_t *flight_ptr;
-static range_finder_t *range_ptr;
-static nav_config_t config_nav;
-static config_t *config_ptr;
+static nav_data_t *nav_data_ptr;
 static states_t *state_ptr;
+static range_finder_t *range_ptr;
+static flight_t *flight_ptr;
+static config_t *config_ptr;
 
-static data_1_t *data1_ptr;
-static data_2_t *data2_ptr;
-static data_3_t *data3_ptr;
 
-static const float pitch_trim_deg = -1.23;
-static const float roll_trim_deg = 0.4;
+static spi_transaction_t trans;
+static spi_device_handle_t handle;
 
-static uint8_t validate_checksum(uint8_t *buff, uint8_t size);
-static void create_packet(uint8_t *write_buff, uint8_t size, uint8_t header1, uint8_t header2, uint8_t footer);
+static uint8_t *spi_heap_mem_receive = NULL;
+static uint8_t *spi_heap_mem_send = NULL;
+static const uint8_t spi_trans_byte_size = sizeof(nav_data_t) + 4;
 
-void nav_comm_init(states_t *std, flight_t *flt, range_finder_t *rng, config_t *cfg, data_1_t *d1, data_2_t *d2, data_3_t *d3)
+static void checksum_generate(uint8_t *data, uint8_t size, uint8_t *cs1, uint8_t *cs2);
+static uint8_t checksum_verify(uint8_t *data, uint8_t size);
+
+void nav_comm_init(nav_data_t *nav, states_t *stt, range_finder_t *rng, flight_t *flt, config_t *cfg)
 {
-    flight_ptr = flt;
+    nav_data_ptr = nav;
+    state_ptr = stt;
     range_ptr = rng;
+    flight_ptr = flt;
     config_ptr = cfg;
-    state_ptr = std;
-    data1_ptr = d1;
-    data2_ptr = d2;
-    data3_ptr = d3;
+
+    spi_bus_config_t buscfg =
+        {
+            .miso_io_num = PIN_NUM_MISO,
+            .mosi_io_num = PIN_NUM_MOSI,
+            .sclk_io_num = PIN_NUM_CLK,
+            .quadwp_io_num = -1,
+            .quadhd_io_num = -1,
+            .max_transfer_sz = 0,
+        };
+    spi_device_interface_config_t devcfg =
+        {
+            .clock_speed_hz = 5 * 1000 * 1000,
+            .mode = 0,
+            .spics_io_num = PIN_NUM_CS,
+            .queue_size = 7,
+        };
+
+    spi_bus_initialize(SPI2_HOST, &buscfg, SPI_DMA_CH_AUTO);
+    spi_bus_add_device(SPI2_HOST, &devcfg, &handle);
+
+    spi_heap_mem_receive = heap_caps_malloc(spi_trans_byte_size, MALLOC_CAP_DMA);
+    spi_heap_mem_send = heap_caps_malloc(spi_trans_byte_size, MALLOC_CAP_DMA);
+
+    memset(spi_heap_mem_receive, 0, spi_trans_byte_size);
+    memset(spi_heap_mem_send, 0, spi_trans_byte_size);
 }
 
-void parse_nav_data(uart_data_t *uart_buff)
+void master_send_recv_nav_comm(uint8_t *new_config_flag)
 {
-    static uint8_t isHeader1Found = 0;
-    static uint8_t isHeader2Found = 0;
-    static uint8_t isHeader3Found = 0;
-    static uint8_t read_buffer[40];
-    static uint8_t byte_counter = 0;
-    static uint8_t prev_data_byte;
-    static const uint8_t data1_size = sizeof(data_1_t);
-    static const uint8_t data2_size = sizeof(data_2_t);
-    static const uint8_t data3_size = sizeof(data_3_t);
+    // prepare send packet
 
-    for (uint8_t i = 0; i < uart_buff->lenght; i++)
+    flight_data.range_cm = range_ptr->range_cm;
+    flight_data.arm_status = flight_ptr->arm_status;
+/*  flight_data.alt_hold_status = flight_ptr->alt_hold_status;
+    flight_data.pos_hold_status = flight_ptr->pos_hold_status;
+    flight_data.waypoint_mission_status = flight_ptr->waypoint_mission_status; */
+
+    if (*new_config_flag == 1)
     {
+        *new_config_flag = 0;
+        flight_data.notch_1_freq = config_ptr->notch_1_freq;
+        flight_data.notch_2_freq = config_ptr->notch_2_freq;
+        flight_data.notch_1_bandwidth = config_ptr->notch_1_bandwidth;
+        flight_data.notch_2_bandwidth = config_ptr->notch_2_bandwidth;
 
-        if (isHeader1Found == 1)
-        {
-            read_buffer[byte_counter++] = uart_buff->data[i];
+        flight_data.ahrs_filter_beta = config_ptr->ahrs_filter_beta;
+        flight_data.ahrs_filter_zeta = config_ptr->ahrs_filter_zeta;
+        flight_data.alt_filter_beta = config_ptr->alt_filter_beta;
+        flight_data.velz_filter_beta = config_ptr->velz_filter_beta;
+        flight_data.velz_filter_zeta = config_ptr->velz_filter_zeta;
 
-            if (byte_counter == data1_size + 2)
-            {
-                byte_counter = 0;
-                isHeader1Found = 0;
-                if (read_buffer[data1_size + 1] == data1_footer)
-                {
-                    if (validate_checksum(read_buffer, data1_size) == 1)
-                    {
-                        memcpy(data1_ptr, read_buffer, data1_size);
-                        state_ptr->pitch_deg = data1_ptr->pitch - pitch_trim_deg;
-                        state_ptr->roll_deg = data1_ptr->roll - roll_trim_deg;
-                        state_ptr->heading_deg = data1_ptr->heading;
-                        state_ptr->pitch_dps = data1_ptr->pitch_dps;
-                        state_ptr->roll_dps = data1_ptr->roll_dps;
-                        state_ptr->yaw_dps = data1_ptr->yaw_dps;
-                    }
-                }
-            }
-        }
-        else if (isHeader2Found == 1)
-        {
-            read_buffer[byte_counter++] = uart_buff->data[i];
+        flight_data.velxy_filter_beta = config_ptr->velxy_filter_beta;
+        flight_data.mag_declination_deg = config_ptr->mag_declination_deg;
+        flight_data.is_new_config = 1;
+    }
+    else
+    {
+        flight_data.is_new_config = 0;
+    }
 
-            if (byte_counter == data2_size + 2)
-            {
-                byte_counter = 0;
-                isHeader2Found = 0;
 
-                if (read_buffer[data2_size + 1] == data2_footer)
-                {
-                    if (validate_checksum(read_buffer, data2_size) == 1)
-                    {
-                        memcpy(data2_ptr, read_buffer, data2_size);
 
-                        state_ptr->altitude_m = data2_ptr->altitude / 100.0f;
-                        state_ptr->vel_forward_ms = data2_ptr->velocity_x_ms / 1000.0f;
-                        state_ptr->vel_right_ms = data2_ptr->velocity_y_ms / 1000.0f;
-                        state_ptr->vel_up_ms = data2_ptr->velocity_z_ms / 1000.0f;
-                    }
-                }
-            }
-        }
-        else if (isHeader3Found == 1)
-        {
-            read_buffer[byte_counter++] = uart_buff->data[i];
 
-            if (byte_counter == data3_size + 2)
-            {
-                byte_counter = 0;
-                isHeader3Found = 0;
-                if (read_buffer[data3_size + 1] == data3_footer)
-                {
-                    if (validate_checksum(read_buffer, data3_size) == 1)
-                    {
-                        memcpy(data3_ptr, read_buffer, data3_size);
-                    }
-                }
-            }
-        }
-        else if (uart_buff->data[i] == data1_header2 && prev_data_byte == data1_header1)
-        {
-            isHeader1Found = 1;
-        }
-        else if (uart_buff->data[i] == data2_header2 && prev_data_byte == data2_header1)
-        {
-            isHeader2Found = 1;
-        }
-        else if (uart_buff->data[i] == data3_header2 && prev_data_byte == data3_header1)
-        {
-            isHeader3Found = 1;
-        }
+    memcpy(spi_heap_mem_send + 1, &flight_data, sizeof(flight_data_t));
+    spi_heap_mem_send[0] = HEADER;
+    static uint8_t checksum_a, checksum_b;
+    checksum_generate(spi_heap_mem_send + 1, spi_trans_byte_size - 4, &checksum_a, &checksum_b);
+    spi_heap_mem_send[spi_trans_byte_size - 3] = checksum_a;
+    spi_heap_mem_send[spi_trans_byte_size - 2] = checksum_b;
+    spi_heap_mem_send[spi_trans_byte_size - 1] = FOOTER;
 
-        prev_data_byte = uart_buff->data[i];
+    // Send data must be bigger than 8 and divisible by 4
+    memset(&trans, 0, sizeof(trans));
+    trans.length = 8 * spi_trans_byte_size; // Command is 64 bits
+    trans.tx_buffer = spi_heap_mem_send;    // send_buffer;
+    trans.rx_buffer = spi_heap_mem_receive; // receive_buffer;
+    spi_device_transmit(handle, &trans);
+
+    if (spi_heap_mem_receive[0] == HEADER && spi_heap_mem_receive[spi_trans_byte_size - 1] == FOOTER && checksum_verify(spi_heap_mem_receive, spi_trans_byte_size))
+    {
+        memcpy(nav_data_ptr, spi_heap_mem_receive + 1, sizeof(nav_data_t));
+
+        state_ptr->pitch_deg = nav_data_ptr->pitch;
+        state_ptr->roll_deg = nav_data_ptr->roll;
+        state_ptr->heading_deg = nav_data_ptr->heading;
+
+        state_ptr->pitch_dps = nav_data_ptr->pitch_dps;
+        state_ptr->roll_dps = nav_data_ptr->roll_dps;
+        state_ptr->yaw_dps = nav_data_ptr->yaw_dps;
+
+        state_ptr->vel_forward_ms = nav_data_ptr->velocity_x_ms / 1000.0f;
+        state_ptr->vel_right_ms = nav_data_ptr->velocity_y_ms / 1000.0f;
+        state_ptr->vel_up_ms = nav_data_ptr->velocity_z_ms / 1000.0f;
+
+        state_ptr->altitude_m = nav_data_ptr->altitude / 100.0f;
+
+        state_ptr->acc_forward_ms2 = nav_data_ptr->acc_x_ned_ms2 / 10.0f;
+        state_ptr->acc_right_ms2 = nav_data_ptr->acc_y_ned_ms2 / 10.0f;
+        state_ptr->acc_up_ms2 = nav_data_ptr->acc_z_ned_ms2 / 10.0f;
+    }
+    else
+    {
+        //printf("0\n");
     }
 }
 
-void send_nav_config()
+static void checksum_generate(uint8_t *data, uint8_t size, uint8_t *cs1, uint8_t *cs2)
 {
-    // 44 + 2 header + 1 checksum + 1 footer = 48 bytes
-    static uint8_t byteArray[sizeof(nav_config_t) + 4];
-    config_nav.notch_1_freq = config_ptr->notch_1_freq;
-    config_nav.notch_1_bandwidth = config_ptr->notch_1_bandwidth;
-    config_nav.notch_2_freq = config_ptr->notch_2_freq;
-    config_nav.notch_2_bandwidth = config_ptr->notch_2_bandwidth;
-    config_nav.ahrs_filter_beta = config_ptr->ahrs_filter_beta;
-    config_nav.ahrs_filter_zeta = config_ptr->ahrs_filter_zeta;
-    config_nav.alt_filter_beta = config_ptr->alt_filter_beta;
-    config_nav.mag_declination_deg = config_ptr->mag_declination_deg;
-    config_nav.velz_filter_beta = config_ptr->velz_filter_beta;
-    config_nav.velz_filter_zeta = config_ptr->velz_filter_zeta;
-    config_nav.velxy_filter_beta = config_ptr->velxy_filter_beta;
+    uint8_t checksum1 = 0, checksum2 = 0;
 
-    memcpy(byteArray + 2, &config_nav, sizeof(nav_config_t));
-    create_packet(byteArray, sizeof(nav_config_t), ins_config_header1, ins_config_header2, ins_config_footer);
-    uart_write(UART_NUM_1, byteArray, sizeof(nav_config_t) + 4);
-}
-
-void send_flight_status()
-{
-    // 5 + 2 header + 1 checksum + 1 footer = 9 bytes
-    static uint8_t byteArray[sizeof(flight_t) + 4];
-    memcpy(byteArray + 2, flight_ptr, sizeof(flight_t));
-    create_packet(byteArray, sizeof(flight_t), flight_header1, flight_header2, flight_footer);
-    uart_write(UART_NUM_1, byteArray, sizeof(flight_t) + 4);
-}
-
-void send_range()
-{
-    // 2 + 2 header + 1 checksum + 1 footer = 6 bytes
-    static uint8_t byteArray[sizeof(range_finder_t) + 4];
-    memcpy(byteArray + 2, range_ptr, sizeof(range_finder_t));
-    create_packet(byteArray, sizeof(range_finder_t), range_finder_header1, range_finder_header2, range_finder_footer);
-    uart_write(UART_NUM_1, byteArray, sizeof(range_finder_t) + 4);
-}
-
-static uint8_t validate_checksum(uint8_t *buff, uint8_t size)
-{
-    uint8_t checksum = 0;
-    for (uint8_t idx = 0; idx < size; idx++)
+    for (uint8_t i = 0; i < size - 2; i++)
     {
-        checksum ^= buff[idx];
+        checksum1 = checksum1 + data[i];
+        checksum2 = checksum2 + checksum1;
     }
-    if (checksum == buff[size])
-    {
+
+    *cs1 = checksum1;
+    *cs2 = checksum2;
+}
+
+static uint8_t checksum_verify(uint8_t *data, uint8_t size)
+{
+    uint8_t c1, c2;
+    checksum_generate(data + 1, size - 4, &c1, &c2);
+    if (c1 == data[size - 3] && c2 == data[size - 2])
         return 1;
-    }
     return 0;
-}
-
-static void create_packet(uint8_t *write_buff, uint8_t size, uint8_t header1, uint8_t header2, uint8_t footer)
-{
-    uint8_t checksum = 0;
-    write_buff[0] = header1;
-    write_buff[1] = header2;
-    for (uint8_t idx = 2; idx < size + 2; idx++)
-    {
-        checksum ^= write_buff[idx];
-    }
-    write_buff[size + 2] = checksum;
-    write_buff[size + 3] = footer;
 }

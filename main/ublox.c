@@ -23,14 +23,15 @@ void gps_init(gps_t *g)
 {
     gps_ptr = g;
 
-    uart_begin(UART_NUM_2, 9600, 14, 15, UART_PARITY_DISABLE);
+    uart_begin(UART_NUM_2, 9600, 17, 16, UART_PARITY_DISABLE);
+    //uart_begin(UART_NUM_2, 9600, 14, 15, UART_PARITY_DISABLE);
     vTaskDelay(1000 / portTICK_PERIOD_MS);
 
     uart_write(UART_NUM_2, set_to_921600_baud, sizeof(set_to_921600_baud));
     vTaskDelay(100 / portTICK_PERIOD_MS);
 
     uart_driver_delete(UART_NUM_2);
-    uart_begin(UART_NUM_2, 921600, 14, 15, UART_PARITY_DISABLE);
+    uart_begin(UART_NUM_2, 921600, 17, 16, UART_PARITY_DISABLE);
 
     uart_write(UART_NUM_2, set_to_10hz, sizeof(set_to_10hz));
     vTaskDelay(100 / portTICK_PERIOD_MS);

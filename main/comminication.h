@@ -12,10 +12,9 @@
 #define TELEM_HEADER 0xFF
 #define CONF_HEADER 0XFE
 
-void comminication_init(gamepad_t *gmpd, config_t *cfg, waypoint_t *wp);
+void comminication_init(config_t *cfg, waypoint_t *wp, uint8_t *cfg_flg);
 void comm_send_telem(telemetry_t *telem);
 void comm_send_conf(config_t *conf);
-
 
 
 #endif

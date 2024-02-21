@@ -25,6 +25,7 @@
         "math.h": "c",
         "ppm.h": "c",
         "rmt_tx.h": "c",
-        "stdio.h": "c"
+        "stdio.h": "c",
+        "uart.h": "c"
     }
 }

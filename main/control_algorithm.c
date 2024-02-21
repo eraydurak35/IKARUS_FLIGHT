@@ -4,7 +4,7 @@
 #include "filters.h"
 #include "esc.h"
 
-static radio_t *rc_p;
+static ibus_t *radio_p;
 static flight_t *flight_p;
 static target_t *target_p;
 static states_t *state_p;
@@ -51,9 +51,9 @@ static void inner_control_loop();
 static void arm();
 static void disarm();
 
-void control_init(radio_t *rc, telemetry_t *tlm, flight_t *flt, target_t *trg, states_t *stt, config_t *cfg, waypoint_t *wp, gps_t *g)
+void control_init(ibus_t *rc, telemetry_t *tlm, flight_t *flt, target_t *trg, states_t *stt, config_t *cfg, waypoint_t *wp, gps_t *g)
 {
-    rc_p = rc;
+    radio_p = rc;
     flight_p = flt;
     target_p = trg;
     state_p = stt;
@@ -68,27 +68,27 @@ void flight_mode_control()
     // ||==============================================||
     // ||                 RC ARM LOGIC                 ||
     // ||==============================================||
-    if (rc_p->channel[4] > 1700 && flight_p->arm_status == 0)
+    if (radio_p->ch4 > 1700 && flight_p->arm_status == 0)
     {
-        if ((flight_p->alt_hold_status == 1 && (rc_p->channel[2] < 1600 && rc_p->channel[2] > 1400)) || (flight_p->alt_hold_status == 0 && rc_p->channel[2] < 1100))
+        if ((flight_p->alt_hold_status == 1 && (radio_p->ch2 < 1600 && radio_p->ch2 > 1400)) || (flight_p->alt_hold_status == 0 && radio_p->ch2 < 1100))
         {
             arm();
         }
     }
-    else if (rc_p->channel[4] < 1300 && flight_p->arm_status == 1)
+    else if (radio_p->ch4 < 1300 && flight_p->arm_status == 1)
     {
         disarm();
     }
     // ||==============================================||
     // ||              RC ALT HOLD LOGIC               ||
     // ||==============================================||
-    if (rc_p->channel[7] > 1700 && flight_p->alt_hold_status == 0 && fabs(state_p->vel_up_ms) < 2.0f)
+    if (radio_p->ch7 > 1700 && flight_p->alt_hold_status == 0 && fabs(state_p->vel_up_ms) < 2.0f)
     {
         flight_p->alt_hold_status = 1;
         pid.altIout = target_p->throttle;
         target_p->altitude = state_p->altitude_m;
     }
-    else if (rc_p->channel[7] < 1300 && flight_p->alt_hold_status == 1)
+    else if (radio_p->ch7 < 1300 && flight_p->alt_hold_status == 1)
     {
         flight_p->alt_hold_status = 0;
     }
@@ -96,11 +96,11 @@ void flight_mode_control()
     // ||==============================================||
     // ||              RC POS HOLD LOGIC               ||
     // ||==============================================||
-    if ((rc_p->channel[6] > 1400 && rc_p->channel[6] < 1600) && flight_p->pos_hold_status == 0 && fabs(state_p->vel_forward_ms) < 2.0f && fabs(state_p->vel_right_ms) < 2.0f)
+    if ((radio_p->ch6 > 1400 && radio_p->ch6 < 1600) && flight_p->pos_hold_status == 0 && fabs(state_p->vel_forward_ms) < 2.0f && fabs(state_p->vel_right_ms) < 2.0f)
     {
         flight_p->pos_hold_status = 1;
     }
-    else if (rc_p->channel[6] < 1300 && flight_p->pos_hold_status == 1)
+    else if (radio_p->ch6 < 1300 && flight_p->pos_hold_status == 1)
     {
         flight_p->pos_hold_status = 0;
     }
@@ -108,11 +108,11 @@ void flight_mode_control()
     // ||==============================================||
     // ||              RC WAYPOINT LOGIC               ||
     // ||==============================================||
-    if ((rc_p->channel[6] > 1800) && flight_p->waypoint_mission_status == 0 && flight_p->arm_status == 1 && flight_p->pos_hold_status == 1 && flight_p->alt_hold_status == 1 && waypoint_p->latitude[0] != 0 && waypoint_p->longitude[0] != 0 && waypoint_p->altitude[0] != 0 /* && gps.fix == 3 && gps.satCount > 5*/)
+    if ((radio_p->ch6 > 1800) && flight_p->waypoint_mission_status == 0 && flight_p->arm_status == 1 && flight_p->pos_hold_status == 1 && flight_p->alt_hold_status == 1 && waypoint_p->latitude[0] != 0 && waypoint_p->longitude[0] != 0 && waypoint_p->altitude[0] != 0 /* && gps.fix == 3 && gps.satCount > 5*/)
     {
         flight_p->waypoint_mission_status = 1;
     }
-    else if (flight_p->waypoint_mission_status == 1 && (!(rc_p->channel[6] > 1800) || flight_p->pos_hold_status == 0 || flight_p->alt_hold_status == 0))
+    else if (flight_p->waypoint_mission_status == 1 && (!(radio_p->ch6 > 1800) || flight_p->pos_hold_status == 0 || flight_p->alt_hold_status == 0))
     {
         flight_p->waypoint_mission_status = 0;
         waypoint_p->is_reached = 1;
@@ -289,7 +289,7 @@ static uint8_t outer_control_loop_wp() // 1000 Hz
 
                 ////////////////////////    Altitude Velocity Controller    /////////////////////////////////
                 // Throttle controls the altitude velocity
-                if (rc_p->channel[2] < 1600 && rc_p->channel[2] > 1400) // Throttle stick is centered, velocity calculated from setpoint error
+                if (radio_p->ch2 < 1600 && radio_p->ch2 > 1400) // Throttle stick is centered, velocity calculated from setpoint error
                 {
                     // Target velocity is calculated from dividing the difference between set altitude and actual altitude with a constant value
                     target_p->velocity_z_ms = (target_p->altitude - state_p->altitude_m) / 2.0f;
@@ -301,7 +301,7 @@ static uint8_t outer_control_loop_wp() // 1000 Hz
                 else // Throttle stick not centered, velocity calculated from stick input
                 {
                     // Calculate the desired altitude velocity from raw stick input
-                    target_p->velocity_z_ms = ((rc_p->channel[2] - 1500.0f) / 500.0f) * config_p->max_vertical_velocity;
+                    target_p->velocity_z_ms = ((radio_p->ch2 - 1500.0f) / 500.0f) * config_p->max_vertical_velocity;
                     // we dont use altitude setpoint if the stick is not centered
                     // but we want to set our setpoint when the stick is in middle
                     // so that when we let go of the stick, craft stays at the altitude we let go
@@ -325,8 +325,8 @@ static void outer_control_loop_rc()
         if (flight_p->pos_hold_status == 1)
         {
 
-            target_p->velocity_x_ms = (apply_deadband(rc_p->channel[1] - 1500, 20) / 500.0f) * config_p->max_horizontal_velocity;
-            target_p->velocity_y_ms = (apply_deadband(rc_p->channel[0] - 1500, 20) / 500.0f) * config_p->max_horizontal_velocity;
+            target_p->velocity_x_ms = (apply_deadband(radio_p->ch1 - 1500, 20) / 500.0f) * config_p->max_horizontal_velocity;
+            target_p->velocity_y_ms = (apply_deadband(radio_p->ch0 - 1500, 20) / 500.0f) * config_p->max_horizontal_velocity;
 
             pid.errVel_x = -(target_p->velocity_x_ms - state_p->vel_forward_ms);
             pid.errVel_y = target_p->velocity_y_ms - state_p->vel_right_ms;
@@ -368,8 +368,8 @@ static void outer_control_loop_rc()
         }
         else
         {
-            target_p->pitch = (apply_deadband(rc_p->channel[1] - 1500, 20) / -500.0f) * config_p->max_pitch_angle;
-            target_p->roll = (apply_deadband(rc_p->channel[0] - 1500, 20) / 500.0f) * config_p->max_roll_angle;
+            target_p->pitch = (apply_deadband(radio_p->ch1 - 1500, 20) / -500.0f) * config_p->max_pitch_angle;
+            target_p->roll = (apply_deadband(radio_p->ch0 - 1500, 20) / 500.0f) * config_p->max_roll_angle;
         }
 
         /////////////////////   Pitch Rate Controller   ///////////////////////
@@ -388,7 +388,7 @@ static void outer_control_loop_rc()
 
         /////////////////////   Yaw Rate Controller   ///////////////////////
         // Yaw stick controls yaw rate
-        if (rc_p->channel[3] < 1550 && rc_p->channel[3] > 1450) // Yaw stick is centered
+        if (radio_p->ch3 < 1550 && radio_p->ch3 > 1450) // Yaw stick is centered
         {
             // Calculate yaw rate from setpoint error
             target_p->yaw_degs = (target_p->heading - state_p->heading_deg) * config_p->yaw_rate_scale;
@@ -403,7 +403,7 @@ static void outer_control_loop_rc()
         }
         else // Yaw stick is not centered
         {
-            target_p->yaw_degs = ((rc_p->channel[3] - 1500.0f) / 500.0f) * config_p->max_yaw_rate;
+            target_p->yaw_degs = ((radio_p->ch3 - 1500.0f) / 500.0f) * config_p->max_yaw_rate;
             target_p->heading = state_p->heading_deg;
         }
         // Just limit the yaw rate so it doesnt go nuts
@@ -426,7 +426,7 @@ static void outer_control_loop_rc()
             }
             ////////////////////////    Altitude Velocity Controller    /////////////////////////////////
             // Throttle controls the altitude velocity
-            if (rc_p->channel[2] < 1600 && rc_p->channel[2] > 1400) // Throttle stick is centered, velocity calculated from setpoint error
+            if (radio_p->ch2 < 1600 && radio_p->ch2 > 1400) // Throttle stick is centered, velocity calculated from setpoint error
             {
                 // Target velocity is calculated from dividing the difference between set altitude and actual altitude with a constant value
                 // we always aim 0.1m higher to make sure target is always reached
@@ -439,7 +439,7 @@ static void outer_control_loop_rc()
             else // Throttle stick not centered, velocity calculated from stick input
             {
                 // Calculate the desired altitude velocity from raw stick input
-                target_p->velocity_z_ms = ((rc_p->channel[2] - 1500.0f) / 500.0f) * config_p->max_vertical_velocity;
+                target_p->velocity_z_ms = ((radio_p->ch2 - 1500.0f) / 500.0f) * config_p->max_vertical_velocity;
                 // we dont use altitude setpoint if the stick is not centered
                 // but we want to set our setpoint when the stick is in middle
                 // so that when we let go of the stick, craft stays at the altitude we let go
@@ -449,7 +449,7 @@ static void outer_control_loop_rc()
         else
         {
             // (MAX_TARGET_THROTTLE - IDLE_THROTTLE) / 1000.0 = (800 - 300) / 1000.0 = 0.5
-            target_p->throttle = (rc_p->channel[2] - 1000.0f) * 0.5f + IDLE_THROTTLE;
+            target_p->throttle = (radio_p->ch2 - 1000.0f) * 0.5f + IDLE_THROTTLE;
 
             if (target_p->throttle > MAX_TARGET_THROTTLE)
                 target_p->throttle = MAX_TARGET_THROTTLE;
