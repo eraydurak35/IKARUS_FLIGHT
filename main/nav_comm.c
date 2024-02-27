@@ -6,7 +6,6 @@
 #include "comminication.h"
 
 static flight_data_t flight_data;
-
 static nav_data_t *nav_data_ptr;
 static states_t *state_ptr;
 static range_finder_t *range_ptr;
@@ -59,7 +58,7 @@ void nav_comm_init(nav_data_t *nav, states_t *stt, range_finder_t *rng, flight_t
     memset(spi_heap_mem_send, 0, spi_trans_byte_size);
 }
 
-void master_send_recv_nav_comm(uint8_t *new_config_flag)
+uint8_t *master_send_recv_nav_comm(uint8_t *new_config_flag)
 {
     // prepare send packet
 
@@ -92,9 +91,6 @@ void master_send_recv_nav_comm(uint8_t *new_config_flag)
         flight_data.is_new_config = 0;
     }
 
-
-
-
     memcpy(spi_heap_mem_send + 1, &flight_data, sizeof(flight_data_t));
     spi_heap_mem_send[0] = HEADER;
     static uint8_t checksum_a, checksum_b;
@@ -105,7 +101,7 @@ void master_send_recv_nav_comm(uint8_t *new_config_flag)
 
     // Send data must be bigger than 8 and divisible by 4
     memset(&trans, 0, sizeof(trans));
-    trans.length = 8 * spi_trans_byte_size; // Command is 64 bits
+    trans.length = 8 * spi_trans_byte_size; // 68 bytes
     trans.tx_buffer = spi_heap_mem_send;    // send_buffer;
     trans.rx_buffer = spi_heap_mem_receive; // receive_buffer;
     spi_device_transmit(handle, &trans);
@@ -131,11 +127,11 @@ void master_send_recv_nav_comm(uint8_t *new_config_flag)
         state_ptr->acc_forward_ms2 = nav_data_ptr->acc_x_ned_ms2 / 10.0f;
         state_ptr->acc_right_ms2 = nav_data_ptr->acc_y_ned_ms2 / 10.0f;
         state_ptr->acc_up_ms2 = nav_data_ptr->acc_z_ned_ms2 / 10.0f;
+
+        return spi_heap_mem_receive;
     }
-    else
-    {
-        //printf("0\n");
-    }
+
+    return NULL;
 }
 
 static void checksum_generate(uint8_t *data, uint8_t size, uint8_t *cs1, uint8_t *cs2)

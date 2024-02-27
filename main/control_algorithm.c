@@ -63,8 +63,9 @@ void control_init(ibus_t *rc, telemetry_t *tlm, flight_t *flt, target_t *trg, st
     gps_p = g;
 }
 
-void flight_mode_control()
+uint8_t flight_mode_control()
 {
+    uint8_t value = 0;
     // ||==============================================||
     // ||                 RC ARM LOGIC                 ||
     // ||==============================================||
@@ -73,11 +74,13 @@ void flight_mode_control()
         if ((flight_p->alt_hold_status == 1 && (radio_p->ch2 < 1600 && radio_p->ch2 > 1400)) || (flight_p->alt_hold_status == 0 && radio_p->ch2 < 1100))
         {
             arm();
+            value = 1;
         }
     }
     else if (radio_p->ch4 < 1300 && flight_p->arm_status == 1)
     {
         disarm();
+        value = 2;
     }
     // ||==============================================||
     // ||              RC ALT HOLD LOGIC               ||
@@ -118,6 +121,8 @@ void flight_mode_control()
         waypoint_p->is_reached = 1;
         waypoint_p->counter = -1;
     }
+
+    return value;
 }
 
 void flight_control() // 1000Hz

@@ -1,4 +1,5 @@
 idf_component_register(SRCS 
+"blackbox.c"
 "ibus.c"
 "esc.c"
 "dshot_esc_encoder.c"

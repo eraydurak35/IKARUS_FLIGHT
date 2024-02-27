@@ -42,6 +42,7 @@
 #include "control_algorithm.h"
 #include "esc.h"
 #include "ibus.h"
+#include "blackbox.h"
 
 static TaskHandle_t task1_handler;
 static TaskHandle_t task2_handler;
@@ -52,15 +53,14 @@ static target_t target;
 static telemetry_t telem;
 static range_finder_t range_finder;
 static gps_t gps;
-//static radio_t rc = {0, 0, 0, 0, 0, {1500, 1500, 1000, 1500, 1000, 1000, 1000, 1000}};
-
 static ibus_t radio = {1500, 1500, 1000, 1500, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000};
 static waypoint_t waypoint = {{0}, {0}, {0}, -1, 1};
 static nav_data_t nav_data;
 
-static uint8_t counter1 = 0;
-static uint8_t counter2 = 0;
+
 static uint8_t new_config_received_flag = 0;
+
+
 
 void IRAM_ATTR timer1_callback(void *arg)
 {
@@ -69,7 +69,14 @@ void IRAM_ATTR timer1_callback(void *arg)
 
 void task_1(void *pvParameters)
 {
+    static uint32_t notification = 0;
+    static uint8_t counter1 = 0;
+    static uint8_t counter2 = 0;
+    static uint8_t is_sd_inserted = 0;
+    static uint8_t *nav_data_for_blackbox = NULL;
+    static uint8_t is_ok_to_write_to_file = 0;
 
+    is_sd_inserted = blackbox_init();
     gpio_configure();
     dshot_esc_init();
     comminication_init(&config, &waypoint, &new_config_received_flag);
@@ -79,12 +86,18 @@ void task_1(void *pvParameters)
     control_init(&radio, &telem, &flight, &target, &state, &config, &waypoint, &gps);
     nav_comm_init(&nav_data, &state, &range_finder, &flight, &config);
     telem.battery_voltage = get_bat_volt() * config.v_sens_gain;
-    static uint32_t receivedValue = 0;
+
     while (1)
     {
-        if (xTaskNotifyWait(0, ULONG_MAX, &receivedValue, 1 / portTICK_PERIOD_MS) == pdTRUE)
+        if (xTaskNotifyWait(0, ULONG_MAX, &notification, 1 / portTICK_PERIOD_MS) == pdTRUE)
         {
-            master_send_recv_nav_comm(&new_config_received_flag);
+            nav_data_for_blackbox = master_send_recv_nav_comm(&new_config_received_flag);
+
+            if (is_ok_to_write_to_file == 1 && nav_data_for_blackbox != NULL)
+            {
+                write_navigation_to_bin_file(nav_data_for_blackbox, 68);
+            }
+
             flight_control();
             counter1++;
             counter2++;
@@ -96,7 +109,20 @@ void task_1(void *pvParameters)
             if (counter2 >= 100) // 10 Hz
             {
                 counter2 = 0;
-                flight_mode_control();
+                uint8_t ret = flight_mode_control();
+                if (is_sd_inserted == 1)
+                {
+                    if (ret == 1)
+                    {
+                        is_ok_to_write_to_file = create_and_open_bin_file();
+                    }
+                    else if (ret == 2)
+                    {
+                        close_bin_file();
+                        is_ok_to_write_to_file = 0;
+                    }
+                    
+                }
 
                 telem.battery_voltage = (get_bat_volt() * config.v_sens_gain) * 0.005f + telem.battery_voltage * 0.995f;
                 telem.pitch = state.pitch_deg;
@@ -105,9 +131,9 @@ void task_1(void *pvParameters)
                 telem.gyro_x_dps = state.pitch_dps;
                 telem.gyro_y_dps = state.roll_dps;
                 telem.gyro_z_dps = state.yaw_dps;
-                telem.acc_x_ms2 = nav_data.acc_x_ms2 / 100.0f;
-                telem.acc_y_ms2 = nav_data.acc_y_ms2 / 100.0f;
-                telem.acc_z_ms2 = nav_data.acc_z_ms2 / 100.0f;
+                telem.acc_x_ms2 = nav_data.acc_x_ms2 / 400.0f;
+                telem.acc_y_ms2 = nav_data.acc_y_ms2 / 400.0f;
+                telem.acc_z_ms2 = nav_data.acc_z_ms2 / 400.0f;
                 telem.imu_temperature = nav_data.imu_temperature / 100.0f;
 
                 telem.mag_x_mgauss = nav_data.mag_x_gauss / 10.0f;

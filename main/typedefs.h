@@ -24,7 +24,6 @@ typedef struct
     int16_t ch11;
     int16_t ch12;
     int16_t ch13;
-    int16_t ch14;
 } ibus_t;
 
 
