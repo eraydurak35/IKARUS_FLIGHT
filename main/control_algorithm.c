@@ -192,7 +192,7 @@ static uint8_t outer_control_loop_wp() // 1000 Hz
             }
             else
             {
-                wp_direction = atan2f(distance_east_cm, distance_north_cm) * RAD_TO_DEG; /// Lowpass ??
+                wp_direction = atan2f(distance_east_cm, distance_north_cm) * RAD_TO_DEG;
                 if (wp_direction < 0)
                     wp_direction += 360.0f;
 

@@ -15,34 +15,35 @@
 // ||############################||
 // ||      ESP IDF LIBRARIES     ||
 // ||############################||
-#include <stdio.h>
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "esp_system.h"
-#include "esp_timer.h"
-#include "driver/i2c.h"
-#include "driver/uart.h"
-#include "nvs_flash.h"
 #include "driver/gpio.h"
+#include "driver/uart.h"
+#include "esp_system.h"
+#include "driver/i2c.h"
+#include "esp_timer.h"
+#include "nvs_flash.h"
 #include "rom/gpio.h"
+#include <stdio.h>
 #include "math.h"
 // ||############################||
 // ||      CUSTOM LIBRARIES      ||
 // ||############################||
-#include "i2c.h"
-#include "filters.h"
-#include "uart.h"
-#include "gpio.h"
+#include "control_algorithm.h"
+#include "comminication.h"
 #include "nv_storage.h"
+#include "blackbox.h"
 #include "typedefs.h"
 #include "nav_comm.h"
+#include "filters.h"
 #include "tf_luna.h"
 #include "ublox.h"
-#include "comminication.h"
-#include "control_algorithm.h"
-#include "esc.h"
+#include "uart.h"
+#include "gpio.h"
 #include "ibus.h"
-#include "blackbox.h"
+#include "esc.h"
+#include "i2c.h"
 
 static TaskHandle_t task1_handler;
 static TaskHandle_t task2_handler;
@@ -56,10 +57,7 @@ static gps_t gps;
 static ibus_t radio = {1500, 1500, 1000, 1500, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000};
 static waypoint_t waypoint = {{0}, {0}, {0}, -1, 1};
 static nav_data_t nav_data;
-
-
 static uint8_t new_config_received_flag = 0;
-
 
 
 void IRAM_ATTR timer1_callback(void *arg)
@@ -128,25 +126,23 @@ void task_1(void *pvParameters)
                 telem.pitch = state.pitch_deg;
                 telem.roll = state.roll_deg;
                 telem.heading = state.heading_deg;
-                telem.gyro_x_dps = state.pitch_dps;
-                telem.gyro_y_dps = state.roll_dps;
-                telem.gyro_z_dps = state.yaw_dps;
-                telem.acc_x_ms2 = nav_data.acc_x_ms2 / 400.0f;
-                telem.acc_y_ms2 = nav_data.acc_y_ms2 / 400.0f;
-                telem.acc_z_ms2 = nav_data.acc_z_ms2 / 400.0f;
-                telem.imu_temperature = nav_data.imu_temperature / 100.0f;
-
-                telem.mag_x_mgauss = nav_data.mag_x_gauss / 10.0f;
-                telem.mag_y_mgauss = nav_data.mag_y_gauss / 10.0f;
-                telem.mag_z_mgauss = nav_data.mag_z_gauss / 10.0f;
-
-                telem.barometer_pressure = nav_data.barometer_pressure / 10.0f;
-                telem.barometer_temperature = nav_data.barometer_temperature / 100.0f;
-                telem.altitude = nav_data.baro_altitude / 100.0f;
-                telem.altitude_calibrated = state.altitude_m;
-                telem.velocity_x_ms = state.vel_forward_ms;
-                telem.velocity_y_ms = state.vel_right_ms;
-                telem.velocity_z_ms = state.vel_up_ms;
+                telem.gyro_x_dps = state.pitch_dps * 100.0f;
+                telem.gyro_y_dps = state.roll_dps * 100.0f;
+                telem.gyro_z_dps = state.yaw_dps * 100.0f;
+                telem.acc_x_ms2 = nav_data.acc_x_ms2;
+                telem.acc_y_ms2 = nav_data.acc_y_ms2;
+                telem.acc_z_ms2 = nav_data.acc_z_ms2;
+                telem.imu_temperature = nav_data.imu_temperature;
+                telem.mag_x_mgauss = nav_data.mag_x_gauss;
+                telem.mag_y_mgauss = nav_data.mag_y_gauss;
+                telem.mag_z_mgauss = nav_data.mag_z_gauss;
+                telem.barometer_pressure = nav_data.barometer_pressure;
+                telem.barometer_temperature = nav_data.barometer_temperature;
+                telem.altitude = nav_data.baro_altitude;
+                telem.altitude_calibrated = nav_data.altitude;
+                telem.velocity_x_ms = nav_data.velocity_x_ms;
+                telem.velocity_y_ms = nav_data.velocity_y_ms;
+                telem.velocity_z_ms = nav_data.velocity_z_ms;
                 telem.target_pitch = target.pitch;
                 telem.target_roll = target.roll;
                 telem.target_heading = target.heading;
@@ -159,24 +155,24 @@ void task_1(void *pvParameters)
                 telem.target_velocity_y_ms = target.velocity_y_ms;
                 telem.target_velocity_z_ms = target.velocity_z_ms;
                 telem.flow_quality = nav_data.flow_quality;
-                telem.flow_x_velocity = nav_data.flow_x_velocity_ms / 10.0f;
-                telem.flow_y_velocity = nav_data.flow_y_velocity_ms / 10.0f;
+                telem.flow_x_velocity = nav_data.flow_x_velocity_ms;
+                telem.flow_y_velocity = nav_data.flow_y_velocity_ms;
                 telem.gps_fix = gps.fix;
                 telem.gps_satCount = gps.satCount;
-                telem.gps_latitude = gps.latitude / 10000000.0f;
-                telem.gps_longitude = gps.longitude / 10000000.0f;
-                telem.gps_altitude_m = gps.altitude_mm / 1000.0f;
-                telem.gps_northVel_ms = gps.northVel_mms / 1000.0f;
-                telem.gps_eastVel_ms = gps.eastVel_mms / 1000.0f;
-                telem.gps_downVel_ms = gps.downVel_mms / 1000.0f;
-                telem.gps_headingOfMotion = gps.headingOfMotion / 100000.0f;
-                telem.gps_hdop = gps.hdop / 100.0f;
-                telem.gps_vdop = gps.vdop / 100.0f;
-                telem.gps_latitude_origin = gps.latitude_origin / 10000000.0f;
-                telem.gps_longitude_origin = gps.longitude_origin / 10000000.0f;
-                telem.gps_altitude_origin = gps.altitude_origin_mm / 1000.0f;
-                telem.target_latitude = target.latitude / 10000000.0f;
-                telem.target_longitude = target.longitude / 10000000.0f;
+                telem.gps_latitude = gps.latitude;
+                telem.gps_longitude = gps.longitude;
+                telem.gps_altitude_m = gps.altitude_mm;
+                telem.gps_northVel_ms = gps.northVel_mms;
+                telem.gps_eastVel_ms = gps.eastVel_mms;
+                telem.gps_downVel_ms = gps.downVel_mms;
+                telem.gps_headingOfMotion = gps.headingOfMotion;
+                telem.gps_hdop = gps.hdop;
+                telem.gps_vdop = gps.vdop;
+                telem.gps_latitude_origin = gps.latitude_origin;
+                telem.gps_longitude_origin = gps.longitude_origin;
+                telem.gps_altitude_origin = gps.altitude_origin_mm;
+                telem.target_latitude = target.latitude;
+                telem.target_longitude = target.longitude;
                 telem.velocity_ms_2d = sqrtf((state.vel_forward_ms * state.vel_forward_ms) + (state.vel_right_ms * state.vel_right_ms));
                 telem.tof_distance_2 = target.throttle;
 

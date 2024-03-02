@@ -82,22 +82,6 @@ typedef struct
     uint8_t is_new_config;
 } flight_data_t;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 typedef struct
 {
     int analog_LX;
@@ -248,18 +232,21 @@ typedef struct
     float pitch;
     float roll;
     float heading;
-    float altitude;
-    float altitude_calibrated;
-    float tof_distance_1;
-    float tof_distance_2;
-    float velocity_x_ms;
-    float velocity_y_ms;
-    float velocity_z_ms;
-    float flow_x_velocity;
-    float flow_y_velocity;
-    float flow_quality;
-    float flight_mode;
-    float arm_status;
+
+    int16_t altitude;
+    int16_t altitude_calibrated;
+    int16_t tof_distance_1;
+    int16_t tof_distance_2;
+    int16_t velocity_x_ms;
+    int16_t velocity_y_ms;
+    int16_t velocity_z_ms;
+    int16_t flow_x_velocity;
+    int16_t flow_y_velocity;
+
+    uint8_t flow_quality;
+    uint8_t flight_mode;
+    uint8_t arm_status;
+
     float target_pitch;
     float target_roll;
     float target_heading;
@@ -270,42 +257,45 @@ typedef struct
     float target_velocity_x_ms;
     float target_velocity_y_ms;
     float target_velocity_z_ms;
-    float barometer_pressure;
-    float barometer_temperature;
-    float imu_temperature;
-    float gyro_x_dps;
-    float gyro_y_dps;
-    float gyro_z_dps;
-    float acc_x_ms2;
-    float acc_y_ms2;
-    float acc_z_ms2;
-    float mag_x_mgauss;
-    float mag_y_mgauss;
-    float mag_z_mgauss;
 
-    //==============//
-    //     GPS      //
-    //==============//
-    float gps_fix;
-    float gps_satCount;
-    float gps_latitude;
-    float gps_longitude;
-    float gps_altitude_m;
-    float gps_northVel_ms;
-    float gps_eastVel_ms;
-    float gps_downVel_ms;
-    float gps_headingOfMotion;
-    float gps_hdop;
-    float gps_vdop;
-    float gps_latitude_origin;
-    float gps_longitude_origin;
-    float gps_altitude_origin;
-    float target_latitude;
-    float target_longitude;
+    int16_t barometer_pressure; // uint16_t olabilir
+    uint16_t barometer_temperature; // int16_t olmalı
+    uint16_t imu_temperature;
+    int16_t gyro_x_dps;
+    int16_t gyro_y_dps;
+    int16_t gyro_z_dps;
+    int16_t acc_x_ms2;
+    int16_t acc_y_ms2;
+    int16_t acc_z_ms2;
+    int16_t mag_x_mgauss;
+    int16_t mag_y_mgauss;
+    int16_t mag_z_mgauss;
+
+    uint8_t gps_fix;
+    uint8_t gps_satCount;
+    
+    int32_t gps_latitude;
+    int32_t gps_longitude;
+    int32_t gps_altitude_m;
+    int32_t gps_northVel_ms;
+    int32_t gps_eastVel_ms;
+    int32_t gps_downVel_ms;
+    int32_t gps_headingOfMotion;
+
+    uint16_t gps_hdop;
+    uint16_t gps_vdop;
+
+    int32_t gps_latitude_origin;
+    int32_t gps_longitude_origin;
+    int32_t gps_altitude_origin;
+    int32_t target_latitude;
+    int32_t target_longitude;
     float distance_m_2d;
     float distance_m_3d;
     float velocity_ms_2d;
-} telemetry_t;
+} __attribute__((packed)) telemetry_t;
+
+
 typedef struct
 {
     uint8_t arm_status;
