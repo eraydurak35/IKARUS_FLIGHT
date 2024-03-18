@@ -10,6 +10,18 @@
 
 typedef struct
 {
+    float pitch_p_out;
+    float roll_p_out;
+    float yaw_p_out;
+    float pitch_i_out;
+    float roll_i_out;
+    float yaw_i_out;
+    float pitch_d_out;
+    float roll_d_out;
+} pid_bb_record_t;
+
+typedef struct
+{
     int16_t ch0;
     int16_t ch1;
     int16_t ch2;
@@ -60,7 +72,7 @@ typedef struct
 } nav_data_t;
 
 
-typedef struct
+/* typedef struct
 {
     int16_t range_cm;
     uint8_t arm_status;
@@ -81,6 +93,15 @@ typedef struct
     float mag_declination_deg;
     uint8_t is_new_config;
 } flight_data_t;
+
+
+typedef struct
+{
+    int16_t range_cm;
+    uint8_t arm_status;
+} data_1_t;
+ */
+
 
 typedef struct
 {
@@ -188,9 +209,10 @@ typedef struct
     float yaw_p;
     float yaw_i;
 
+    float ff_gain;
+
     float position_p;
     float position_i;
-    float position_d;
 
     float altitude_p;
     float altitude_i;
@@ -224,6 +246,11 @@ typedef struct
     float velz_filter_beta;
     float velz_filter_zeta;
     float velxy_filter_beta;
+    //
+    float alt_to_vel_gain;
+    float wp_threshold_cm;
+    float wp_heading_correct_gain;
+    float wp_dist_to_vel_gain;
 } config_t;
 
 typedef struct
@@ -303,6 +330,9 @@ typedef struct
     uint8_t pos_hold_status;
     uint8_t takeoff_status;
     uint8_t waypoint_mission_status;
+    /// NEW ///
+    uint8_t rth_status;
+    uint8_t is_rth_done;
 } flight_t;
 
 

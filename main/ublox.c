@@ -24,14 +24,13 @@ void gps_init(gps_t *g)
     gps_ptr = g;
 
     uart_begin(UART_NUM_2, 9600, 17, 16, UART_PARITY_DISABLE);
-    //uart_begin(UART_NUM_2, 9600, 14, 15, UART_PARITY_DISABLE);
     vTaskDelay(1000 / portTICK_PERIOD_MS);
 
     uart_write(UART_NUM_2, set_to_921600_baud, sizeof(set_to_921600_baud));
-    vTaskDelay(100 / portTICK_PERIOD_MS);
+    vTaskDelay(500 / portTICK_PERIOD_MS);
 
-    uart_driver_delete(UART_NUM_2);
-    uart_begin(UART_NUM_2, 921600, 17, 16, UART_PARITY_DISABLE);
+    uart_set_baudrate(UART_NUM_2, 921600);
+    vTaskDelay(100 / portTICK_PERIOD_MS);
 
     uart_write(UART_NUM_2, set_to_10hz, sizeof(set_to_10hz));
     vTaskDelay(100 / portTICK_PERIOD_MS);
@@ -46,6 +45,8 @@ void gps_init(gps_t *g)
     vTaskDelay(100 / portTICK_PERIOD_MS);
 
     uart_write(UART_NUM_2, full_power, sizeof(full_power));
+
+    //uart_begin(UART_NUM_0, 921600, 1, 3, UART_PARITY_DISABLE);
 }
 
 void parse_gps_data(uart_data_t *data_buff)
@@ -58,6 +59,8 @@ void parse_gps_data(uart_data_t *data_buff)
     static uint8_t byte_counter;
     static const uint8_t PVT_Message_Size = 90;
     static const uint8_t DOP_Message_Size = 24;
+
+    //uart_write(UART_NUM_0, data_buff->data, data_buff->lenght);
 
     for (uint8_t i = 0; i < data_buff->lenght; i++)
     {

@@ -11,28 +11,6 @@
 #define HEADER 0x69
 #define FOOTER 0x31
 
-
 void nav_comm_init(nav_data_t *nav, states_t *stt, range_finder_t *rng, flight_t *flt, config_t *cfg);
-uint8_t *master_send_recv_nav_comm(uint8_t *new_config_flag);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+uint8_t *master_send_recv_nav_comm(uint8_t new_config_flag);
 #endif

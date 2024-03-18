@@ -12,7 +12,6 @@ static range_finder_t *range_ptr;
 static flight_t *flight_ptr;
 static config_t *config_ptr;
 
-
 static spi_transaction_t trans;
 static spi_device_handle_t handle;
 
@@ -58,30 +57,23 @@ void nav_comm_init(nav_data_t *nav, states_t *stt, range_finder_t *rng, flight_t
     memset(spi_heap_mem_send, 0, spi_trans_byte_size);
 }
 
-uint8_t *master_send_recv_nav_comm(uint8_t *new_config_flag)
+uint8_t *master_send_recv_nav_comm(uint8_t new_config_flag)
 {
-    // prepare send packet
-
+    // prepare packet to send
     flight_data.range_cm = range_ptr->range_cm;
     flight_data.arm_status = flight_ptr->arm_status;
-/*  flight_data.alt_hold_status = flight_ptr->alt_hold_status;
-    flight_data.pos_hold_status = flight_ptr->pos_hold_status;
-    flight_data.waypoint_mission_status = flight_ptr->waypoint_mission_status; */
 
-    if (*new_config_flag == 1)
+    if (new_config_flag == 1)
     {
-        *new_config_flag = 0;
         flight_data.notch_1_freq = config_ptr->notch_1_freq;
         flight_data.notch_2_freq = config_ptr->notch_2_freq;
         flight_data.notch_1_bandwidth = config_ptr->notch_1_bandwidth;
         flight_data.notch_2_bandwidth = config_ptr->notch_2_bandwidth;
-
         flight_data.ahrs_filter_beta = config_ptr->ahrs_filter_beta;
         flight_data.ahrs_filter_zeta = config_ptr->ahrs_filter_zeta;
         flight_data.alt_filter_beta = config_ptr->alt_filter_beta;
         flight_data.velz_filter_beta = config_ptr->velz_filter_beta;
         flight_data.velz_filter_zeta = config_ptr->velz_filter_zeta;
-
         flight_data.velxy_filter_beta = config_ptr->velxy_filter_beta;
         flight_data.mag_declination_deg = config_ptr->mag_declination_deg;
         flight_data.is_new_config = 1;
@@ -98,7 +90,6 @@ uint8_t *master_send_recv_nav_comm(uint8_t *new_config_flag)
     spi_heap_mem_send[spi_trans_byte_size - 3] = checksum_a;
     spi_heap_mem_send[spi_trans_byte_size - 2] = checksum_b;
     spi_heap_mem_send[spi_trans_byte_size - 1] = FOOTER;
-
     // Send data must be bigger than 8 and divisible by 4
     memset(&trans, 0, sizeof(trans));
     trans.length = 8 * spi_trans_byte_size; // 68 bytes
@@ -109,41 +100,32 @@ uint8_t *master_send_recv_nav_comm(uint8_t *new_config_flag)
     if (spi_heap_mem_receive[0] == HEADER && spi_heap_mem_receive[spi_trans_byte_size - 1] == FOOTER && checksum_verify(spi_heap_mem_receive, spi_trans_byte_size))
     {
         memcpy(nav_data_ptr, spi_heap_mem_receive + 1, sizeof(nav_data_t));
-
         state_ptr->pitch_deg = nav_data_ptr->pitch;
         state_ptr->roll_deg = nav_data_ptr->roll;
         state_ptr->heading_deg = nav_data_ptr->heading;
-
         state_ptr->pitch_dps = nav_data_ptr->pitch_dps;
         state_ptr->roll_dps = nav_data_ptr->roll_dps;
         state_ptr->yaw_dps = nav_data_ptr->yaw_dps;
-
         state_ptr->vel_forward_ms = nav_data_ptr->velocity_x_ms / 1000.0f;
         state_ptr->vel_right_ms = nav_data_ptr->velocity_y_ms / 1000.0f;
         state_ptr->vel_up_ms = nav_data_ptr->velocity_z_ms / 1000.0f;
-
         state_ptr->altitude_m = nav_data_ptr->altitude / 100.0f;
-
         state_ptr->acc_forward_ms2 = nav_data_ptr->acc_x_ned_ms2 / 10.0f;
         state_ptr->acc_right_ms2 = nav_data_ptr->acc_y_ned_ms2 / 10.0f;
         state_ptr->acc_up_ms2 = nav_data_ptr->acc_z_ned_ms2 / 10.0f;
-
         return spi_heap_mem_receive;
     }
-
     return NULL;
 }
 
 static void checksum_generate(uint8_t *data, uint8_t size, uint8_t *cs1, uint8_t *cs2)
 {
     uint8_t checksum1 = 0, checksum2 = 0;
-
     for (uint8_t i = 0; i < size - 2; i++)
     {
         checksum1 = checksum1 + data[i];
         checksum2 = checksum2 + checksum1;
     }
-
     *cs1 = checksum1;
     *cs2 = checksum2;
 }

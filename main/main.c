@@ -11,11 +11,9 @@
  *                                                                                           Y8b d88P                 
  *                                                                                            "Y88P"                  
  */
-
 // ||############################||
 // ||      ESP IDF LIBRARIES     ||
 // ||############################||
-
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
@@ -25,6 +23,7 @@
 #include "esp_timer.h"
 #include "nvs_flash.h"
 #include "rom/gpio.h"
+#include <string.h>
 #include <stdio.h>
 #include "math.h"
 // ||############################||
@@ -44,21 +43,27 @@
 #include "ibus.h"
 #include "esc.h"
 #include "i2c.h"
-
+// ||############################||
+// ||      GLOBAL WARIABLES      ||
+// ||############################||
 static TaskHandle_t task1_handler;
 static TaskHandle_t task2_handler;
+static TaskHandle_t beep_task_handler;
+static TaskHandle_t task4_handler;
 static config_t config;
 static states_t state;
 static flight_t flight;
 static target_t target;
+static pid_bb_record_t pid_bb;
 static telemetry_t telem;
 static range_finder_t range_finder;
 static gps_t gps;
 static ibus_t radio = {1500, 1500, 1000, 1500, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000};
 static waypoint_t waypoint = {{0}, {0}, {0}, -1, 1};
 static nav_data_t nav_data;
-static uint8_t new_config_received_flag = 0;
-
+static uint8_t is_new_gsa_data_recv_flag = 0;
+static float mag_calib_data[12] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f};
+//static uint8_t flight_bb_buffer[sizeof(pid_bb) + 1];
 
 void IRAM_ATTR timer1_callback(void *arg)
 {
@@ -77,11 +82,12 @@ void task_1(void *pvParameters)
     is_sd_inserted = blackbox_init();
     gpio_configure();
     dshot_esc_init();
-    comminication_init(&config, &waypoint, &new_config_received_flag);
+    comminication_init(&config, mag_calib_data, &waypoint, &is_new_gsa_data_recv_flag);
     read_config(&config);
+    //printf("%f, %f, %f, %f\n", config.alt_to_vel_gain, config.wp_threshold_cm, config.wp_heading_correct_gain, config.wp_dist_to_vel_gain);
     comm_send_conf(&config);
     i2c_master_init(I2C_NUM_0, SDA1, SCL1, 400000, GPIO_PULLUP_DISABLE);
-    control_init(&radio, &telem, &flight, &target, &state, &config, &waypoint, &gps);
+    control_init(&radio, &telem, &flight, &target, &state, &config, &waypoint, &gps, &pid_bb);
     nav_comm_init(&nav_data, &state, &range_finder, &flight, &config);
     telem.battery_voltage = get_bat_volt() * config.v_sens_gain;
 
@@ -89,12 +95,31 @@ void task_1(void *pvParameters)
     {
         if (xTaskNotifyWait(0, ULONG_MAX, &notification, 1 / portTICK_PERIOD_MS) == pdTRUE)
         {
-            nav_data_for_blackbox = master_send_recv_nav_comm(&new_config_received_flag);
-
+            if (is_new_gsa_data_recv_flag == 0)
+            {
+                nav_data_for_blackbox = master_send_recv_nav_comm(0);
+            }
+            else
+            {
+                nav_data_for_blackbox = master_send_recv_nav_comm(is_new_gsa_data_recv_flag);
+                xTaskNotify(beep_task_handler, is_new_gsa_data_recv_flag, eSetValueWithOverwrite);
+                if (is_new_gsa_data_recv_flag == 3)
+                    comm_send_conf(&config);
+                else if (is_new_gsa_data_recv_flag == 4)
+                    comm_send_wp();
+                is_new_gsa_data_recv_flag = 0;
+            }
+            
             if (is_ok_to_write_to_file == 1 && nav_data_for_blackbox != NULL)
             {
                 write_navigation_to_bin_file(nav_data_for_blackbox, 68);
             }
+            /*if (is_ok_to_write_to_file == 1)
+            {
+                memcpy(flight_bb_buffer + 1, &pid_bb, sizeof(pid_bb));
+                flight_bb_buffer[0] = 0x12;
+                write_flight_to_bin_file(flight_bb_buffer, sizeof(flight_bb_buffer));
+            } */
 
             flight_control();
             counter1++;
@@ -201,22 +226,117 @@ void task_1(void *pvParameters)
 
 void task_2(void *pvParameters)
 {
-    static uart_data_t uart2_data;
     static uart_data_t uart1_data;
-    gps_init(&gps);
     ibus_init(&radio);
     while (1)
     {
-        uart_read(UART_NUM_2, &uart2_data, 10);
-        uart_read(UART_NUM_1, &uart1_data, 10);
+        uart_read(UART_NUM_1, &uart1_data, 5);
         parse_ibus_data(&uart1_data);
+    }
+}
+
+void task_4(void *pvParameters)
+{
+    static uart_data_t uart2_data;
+    gps_init(&gps);
+    while (1)
+    {
+        uart_read(UART_NUM_2, &uart2_data, 5);
         parse_gps_data(&uart2_data);
+    }
+}
+
+void task_3(void *pvParameters)
+{
+    static uint32_t notification = 0;
+    while (1)
+    {
+        if (xTaskNotifyWait(0, ULONG_MAX, &notification, portMAX_DELAY) == pdTRUE)
+        {
+            if (notification == 1)
+            {
+                start_beep(440);
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+                stop_beep();
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+                start_beep(880);
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+                stop_beep();
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+                start_beep(1760);
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+                stop_beep();
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+            }
+            else if (notification == 2)
+            {
+                start_beep(880);
+                vTaskDelay(150 / portTICK_PERIOD_MS);
+                stop_beep();
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+                start_beep(880);
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+                stop_beep();
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+                start_beep(1760);
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+                stop_beep();
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+            }
+            else if (notification == 3)
+            {
+                start_beep(1760);
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+                stop_beep();
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+                start_beep(880);
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+                stop_beep();
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+                start_beep(440);
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+                stop_beep();
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+            }
+            else if (notification == 4)
+            {
+                start_beep(1760);
+                vTaskDelay(150 / portTICK_PERIOD_MS);
+                stop_beep();
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+                start_beep(880);
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+                stop_beep();
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+                start_beep(880);
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+                stop_beep();
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+            }
+            else if (notification == 5)
+            {
+                start_beep(1760);
+                vTaskDelay(150 / portTICK_PERIOD_MS);
+                stop_beep();
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+                start_beep(880);
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+                stop_beep();
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+                start_beep(1760);
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+                stop_beep();
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+            }
+        }
     }
 }
 void app_main(void)
 {
+    xTaskCreatePinnedToCore(&task_4, "task4", 1024 * 4, NULL, 1, &task4_handler, tskNO_AFFINITY);
     xTaskCreatePinnedToCore(&task_2, "task2", 1024 * 4, NULL, 1, &task2_handler, tskNO_AFFINITY);
     xTaskCreatePinnedToCore(&task_1, "task1", 1024 * 4, NULL, 1, &task1_handler, tskNO_AFFINITY);
+    xTaskCreatePinnedToCore(&task_3, "task3", 1024 * 4, NULL, 0, &beep_task_handler, tskNO_AFFINITY);
 
     esp_timer_handle_t timer1;
     const esp_timer_create_args_t timer1_args =

@@ -6,5 +6,4 @@
 void read_config(config_t *cfg);
 void save_config(config_t *cfg);
 
-
 #endif

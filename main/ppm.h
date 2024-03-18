@@ -3,7 +3,6 @@
 
 #include "typedefs.h"
 
-
 void ppm_parse(radio_t *rc);
 
 #endif

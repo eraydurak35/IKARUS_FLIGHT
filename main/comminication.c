@@ -7,7 +7,6 @@
 #include "nv_storage.h"
 #include "nav_comm.h"
 
-uint8_t new_config_received = 0;
 
 static const uint8_t drone_mac_address[6] = {0x04, 0x61, 0x05, 0x05, 0x3A, 0xE4};
 static const uint8_t ground_station_mac_address[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
@@ -15,14 +14,36 @@ static esp_now_peer_info_t peerInfo;
 
 static config_t *config_ptr = NULL;
 static waypoint_t *waypoint_ptr = NULL;
-static uint8_t *new_config_flag = NULL;
+static uint8_t *new_data_recv_flag = NULL;
+static float *mag_calib_data = NULL;
 
 static void espnow_receive_cb(const esp_now_recv_info_t *recv_info, const uint8_t *data, int len);
 static void espnow_send_cb(const uint8_t *mac_addr, esp_now_send_status_t status);
 
-void comminication_init(config_t *cfg, waypoint_t *wp, uint8_t *cfg_flg)
+void comminication_init(config_t *cfg, float *mg_cal, waypoint_t *wp, uint8_t *flg)
 {
     nvs_flash_init();
+
+    wifi_init_config_t wifi_cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&wifi_cfg));
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    ESP_ERROR_CHECK(esp_wifi_start());
+
+    // Set Wi-Fi protocol to long range mode
+    ESP_ERROR_CHECK(esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_LR));
+
+    // Initialize ESP-NOW
+    ESP_ERROR_CHECK(esp_now_init());
+    ESP_ERROR_CHECK(esp_wifi_set_mac(WIFI_IF_STA, &drone_mac_address[0]));
+
+    ESP_ERROR_CHECK(esp_now_register_send_cb(espnow_send_cb));
+    ESP_ERROR_CHECK(esp_now_register_recv_cb(espnow_receive_cb));
+    memcpy(peerInfo.peer_addr, ground_station_mac_address, 6);
+    peerInfo.channel = 0;
+    peerInfo.encrypt = false;
+    esp_now_add_peer(&peerInfo);
+
+/*
     wifi_init_config_t my_config = WIFI_INIT_CONFIG_DEFAULT();
     my_config.ampdu_tx_enable = 0;
     esp_wifi_init(&my_config);
@@ -39,10 +60,11 @@ void comminication_init(config_t *cfg, waypoint_t *wp, uint8_t *cfg_flg)
     peerInfo.channel = 0;
     peerInfo.encrypt = false;
     esp_now_add_peer(&peerInfo);
-
+*/
     config_ptr = cfg;
     waypoint_ptr = wp;
-    new_config_flag = cfg_flg;
+    new_data_recv_flag = flg;
+    mag_calib_data = mg_cal;
 }
 
 void comm_send_telem(telemetry_t *telem)
@@ -61,21 +83,51 @@ void comm_send_conf(config_t *conf)
     esp_now_send(ground_station_mac_address, buffer, sizeof(buffer));
 }
 
+void comm_send_wp()
+{
+    uint8_t buffer[sizeof(waypoint_ptr->latitude) + sizeof(waypoint_ptr->longitude) + sizeof(waypoint_ptr->altitude) + 1];
+    buffer[0] = WP_HEADER;
+    memcpy(buffer + 1, waypoint_ptr->latitude, sizeof(waypoint_ptr->latitude));
+    memcpy(buffer + 1 + sizeof(waypoint_ptr->latitude), waypoint_ptr->longitude, sizeof(waypoint_ptr->longitude));
+    memcpy(buffer + 1 + sizeof(waypoint_ptr->latitude) + sizeof(waypoint_ptr->longitude), waypoint_ptr->altitude, sizeof(waypoint_ptr->altitude));
+    esp_now_send(ground_station_mac_address, buffer, sizeof(buffer));
+}
+
 static void espnow_receive_cb(const esp_now_recv_info_t *recv_info, const uint8_t *data, int len)
 {
     if (data[0] == 0xFE && len == sizeof(config_t) + 1)
     {
         memcpy(config_ptr, data + 1, sizeof(config_t));
         save_config(config_ptr);
-        *new_config_flag = 1;
-        //send_nav_config();
+        *new_data_recv_flag = 1;
     }
     else if (data[0] == 0xFD && len == 226)
     {
         memcpy(waypoint_ptr->latitude, data + 1, sizeof(waypoint_ptr->latitude));
         memcpy(waypoint_ptr->longitude, data + sizeof(waypoint_ptr->longitude) + 1, sizeof(waypoint_ptr->longitude));
         memcpy(waypoint_ptr->altitude, data + (sizeof(waypoint_ptr->longitude) * 2) + 1, sizeof(waypoint_ptr->altitude));
+        *new_data_recv_flag = 2;
     }
+    else if (data[0] == 0xFC && len == 2)
+    {
+        if (data[1] == 10)
+            *new_data_recv_flag = 3;
+        else if (data[1] == 20)
+        {
+            *new_data_recv_flag = 4;
+        }
+    }
+    else if (data[0] == 0xFB && len == 49)
+    {
+        *new_data_recv_flag = 5;
+        memcpy(mag_calib_data, data + 1, 48);
+
+/*         printf("%.4f\t%.4f\t%.4f\n\n\n", mag_calib_data[0], mag_calib_data[1], mag_calib_data[2]);
+        printf("%.4f\t%.4f\t%.4f\n\n", mag_calib_data[3], mag_calib_data[4], mag_calib_data[5]);
+        printf("%.4f\t%.4f\t%.4f\n\n", mag_calib_data[6], mag_calib_data[7], mag_calib_data[8]);
+        printf("%.4f\t%.4f\t%.4f\n\n", mag_calib_data[9], mag_calib_data[10], mag_calib_data[11]); */
+    }
+
 }
 static void espnow_send_cb(const uint8_t *mac_addr, esp_now_send_status_t status)
 {

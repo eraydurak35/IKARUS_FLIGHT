@@ -27,31 +27,11 @@ void ppm_parse(radio_t *rc)
             {
                 counter = 0;
                 rc->ppm_start_found = 0;
-                // flightModeSelector();
             }
         }
         else if (rc->pulse_lenght > 3000)
         {
             rc->ppm_start_found = 1;
-
-            // printf("%d\n", rc->channel[0]);
-            /*
-            Serial.print(rc.channel[0]);
-            Serial.print(",");
-            Serial.print(rc.channel[1]);
-            Serial.print(",");
-            Serial.print(rc.channel[2]);
-            Serial.print(",");
-            Serial.print(rc.channel[3]);
-            Serial.print(",");
-            Serial.print(rc.channel[4]);
-            Serial.print(",");
-            Serial.print(rc.channel[5]);
-            Serial.print(",");
-            Serial.print(rc.channel[6]);
-            Serial.print(",");
-            Serial.println(rc.channel[7]);
-            */
         }
     }
 }
