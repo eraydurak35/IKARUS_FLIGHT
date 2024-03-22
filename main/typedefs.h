@@ -72,37 +72,6 @@ typedef struct
 } nav_data_t;
 
 
-/* typedef struct
-{
-    int16_t range_cm;
-    uint8_t arm_status;
-    uint8_t alt_hold_status;
-    uint8_t pos_hold_status;
-    uint8_t takeoff_status;
-    uint8_t waypoint_mission_status;
-    float notch_1_freq;
-    float notch_1_bandwidth;
-    float notch_2_freq;
-    float notch_2_bandwidth;
-    float ahrs_filter_beta;
-    float ahrs_filter_zeta;
-    float alt_filter_beta;
-    float velz_filter_beta;
-    float velz_filter_zeta;
-    float velxy_filter_beta;
-    float mag_declination_deg;
-    uint8_t is_new_config;
-} flight_data_t;
-
-
-typedef struct
-{
-    int16_t range_cm;
-    uint8_t arm_status;
-} data_1_t;
- */
-
-
 typedef struct
 {
     int analog_LX;
@@ -330,49 +299,10 @@ typedef struct
     uint8_t pos_hold_status;
     uint8_t takeoff_status;
     uint8_t waypoint_mission_status;
-    /// NEW ///
     uint8_t rth_status;
     uint8_t is_rth_done;
 } flight_t;
 
-
-typedef struct
-{
-  float pitch;
-  float roll;
-  float heading;
-  float pitch_dps;
-  float roll_dps;
-  float yaw_dps;
-} data_1_t;
-
-typedef struct
-{
-    int16_t velocity_x_ms;
-    int16_t velocity_y_ms;
-    int16_t velocity_z_ms;
-    int16_t flow_x_velocity_ms;
-    int16_t flow_y_velocity_ms;
-    uint8_t flow_quality;
-    int16_t altitude;
-    int16_t baro_altitude;
-    int16_t barometer_pressure;
-    uint16_t barometer_temperature;
-} data_2_t;
-
-typedef struct
-{
-    uint16_t imu_temperature;
-    int16_t acc_x_ned_ms2;
-    int16_t acc_y_ned_ms2;
-    int16_t acc_z_ned_ms2;
-    int16_t acc_x_ms2;
-    int16_t acc_y_ms2;
-    int16_t acc_z_ms2;
-    int16_t mag_x_gauss;
-    int16_t mag_y_gauss;
-    int16_t mag_z_gauss;
-} data_3_t;
 
 typedef struct
 {

@@ -7,7 +7,6 @@
 #include "nv_storage.h"
 #include "nav_comm.h"
 
-
 static const uint8_t drone_mac_address[6] = {0x04, 0x61, 0x05, 0x05, 0x3A, 0xE4};
 static const uint8_t ground_station_mac_address[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 static esp_now_peer_info_t peerInfo;
@@ -15,12 +14,13 @@ static esp_now_peer_info_t peerInfo;
 static config_t *config_ptr = NULL;
 static waypoint_t *waypoint_ptr = NULL;
 static uint8_t *new_data_recv_flag = NULL;
-static float *mag_calib_data = NULL;
+static uint8_t *motor_test_num_ptr = NULL;
+static const uint8_t *mag_data;
 
 static void espnow_receive_cb(const esp_now_recv_info_t *recv_info, const uint8_t *data, int len);
 static void espnow_send_cb(const uint8_t *mac_addr, esp_now_send_status_t status);
 
-void comminication_init(config_t *cfg, float *mg_cal, waypoint_t *wp, uint8_t *flg)
+void comminication_init(config_t *cfg, waypoint_t *wp, uint8_t *flg, uint8_t *mtr_tst)
 {
     nvs_flash_init();
 
@@ -43,28 +43,10 @@ void comminication_init(config_t *cfg, float *mg_cal, waypoint_t *wp, uint8_t *f
     peerInfo.encrypt = false;
     esp_now_add_peer(&peerInfo);
 
-/*
-    wifi_init_config_t my_config = WIFI_INIT_CONFIG_DEFAULT();
-    my_config.ampdu_tx_enable = 0;
-    esp_wifi_init(&my_config);
-    esp_wifi_start();
-
-    esp_wifi_set_channel(CHANNEL, WIFI_SECOND_CHAN_NONE);
-    esp_wifi_internal_set_fix_rate(WIFI_IF_STA, true, DATARATE);
-    esp_wifi_set_mac(WIFI_IF_STA, &drone_mac_address[0]);
-
-    esp_now_init();
-    esp_now_register_send_cb(espnow_send_cb);
-    esp_now_register_recv_cb(espnow_receive_cb);
-    memcpy(peerInfo.peer_addr, ground_station_mac_address, 6);
-    peerInfo.channel = 0;
-    peerInfo.encrypt = false;
-    esp_now_add_peer(&peerInfo);
-*/
     config_ptr = cfg;
     waypoint_ptr = wp;
     new_data_recv_flag = flg;
-    mag_calib_data = mg_cal;
+    motor_test_num_ptr = mtr_tst;
 }
 
 void comm_send_telem(telemetry_t *telem)
@@ -92,7 +74,13 @@ void comm_send_wp()
     memcpy(buffer + 1 + sizeof(waypoint_ptr->latitude) + sizeof(waypoint_ptr->longitude), waypoint_ptr->altitude, sizeof(waypoint_ptr->altitude));
     esp_now_send(ground_station_mac_address, buffer, sizeof(buffer));
 }
-
+void comm_send_motor_test_result(float *result)
+{
+    uint8_t buffer[sizeof(float) * 4 + 1];
+    buffer[0] = MTR_TEST_HEADER;
+    memcpy(buffer + 1, result, sizeof(float) * 4);
+    esp_now_send(ground_station_mac_address, buffer, sizeof(buffer));
+}
 static void espnow_receive_cb(const esp_now_recv_info_t *recv_info, const uint8_t *data, int len)
 {
     if (data[0] == 0xFE && len == sizeof(config_t) + 1)
@@ -113,22 +101,25 @@ static void espnow_receive_cb(const esp_now_recv_info_t *recv_info, const uint8_
         if (data[1] == 10)
             *new_data_recv_flag = 3;
         else if (data[1] == 20)
-        {
             *new_data_recv_flag = 4;
-        }
+
     }
     else if (data[0] == 0xFB && len == 49)
     {
         *new_data_recv_flag = 5;
-        memcpy(mag_calib_data, data + 1, 48);
-
-/*         printf("%.4f\t%.4f\t%.4f\n\n\n", mag_calib_data[0], mag_calib_data[1], mag_calib_data[2]);
-        printf("%.4f\t%.4f\t%.4f\n\n", mag_calib_data[3], mag_calib_data[4], mag_calib_data[5]);
-        printf("%.4f\t%.4f\t%.4f\n\n", mag_calib_data[6], mag_calib_data[7], mag_calib_data[8]);
-        printf("%.4f\t%.4f\t%.4f\n\n", mag_calib_data[9], mag_calib_data[10], mag_calib_data[11]); */
+        mag_data = data;
+    }
+    else if (data[0] == 0xFA)
+    {
+        *motor_test_num_ptr = data[1];
     }
 
 }
 static void espnow_send_cb(const uint8_t *mac_addr, esp_now_send_status_t status)
 {
+}
+
+const uint8_t *get_mag_data()
+{
+    return mag_data;
 }

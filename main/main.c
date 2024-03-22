@@ -29,9 +29,10 @@
 // ||############################||
 // ||      CUSTOM LIBRARIES      ||
 // ||############################||
-#include "control_algorithm.h"
+#include "guidance_control.h"
 #include "comminication.h"
 #include "nv_storage.h"
+#include "motor_test.h"
 #include "blackbox.h"
 #include "typedefs.h"
 #include "nav_comm.h"
@@ -62,7 +63,7 @@ static ibus_t radio = {1500, 1500, 1000, 1500, 1000, 1000, 1000, 1000, 1000, 100
 static waypoint_t waypoint = {{0}, {0}, {0}, -1, 1};
 static nav_data_t nav_data;
 static uint8_t is_new_gsa_data_recv_flag = 0;
-static float mag_calib_data[12] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f};
+static uint8_t motor_test_number = 0;
 //static uint8_t flight_bb_buffer[sizeof(pid_bb) + 1];
 
 void IRAM_ATTR timer1_callback(void *arg)
@@ -82,10 +83,9 @@ void task_1(void *pvParameters)
     is_sd_inserted = blackbox_init();
     gpio_configure();
     dshot_esc_init();
-    comminication_init(&config, mag_calib_data, &waypoint, &is_new_gsa_data_recv_flag);
+    comminication_init(&config, &waypoint, &is_new_gsa_data_recv_flag, &motor_test_number);
     read_config(&config);
     //printf("%f, %f, %f, %f\n", config.alt_to_vel_gain, config.wp_threshold_cm, config.wp_heading_correct_gain, config.wp_dist_to_vel_gain);
-    comm_send_conf(&config);
     i2c_master_init(I2C_NUM_0, SDA1, SCL1, 400000, GPIO_PULLUP_DISABLE);
     control_init(&radio, &telem, &flight, &target, &state, &config, &waypoint, &gps, &pid_bb);
     nav_comm_init(&nav_data, &state, &range_finder, &flight, &config);
@@ -121,7 +121,20 @@ void task_1(void *pvParameters)
                 write_flight_to_bin_file(flight_bb_buffer, sizeof(flight_bb_buffer));
             } */
 
-            flight_control();
+            if (motor_test_number == 0)
+            {
+                flight_control();
+            }
+            else
+            {
+                uint8_t ret = motor_test(&nav_data, motor_test_number);
+                if (ret == 0)
+                {
+                    motor_test_number = 0;
+                    comm_send_motor_test_result(get_motor_test_results());
+                }
+            }
+            
             counter1++;
             counter2++;
             if (counter1 >= 10) // 100 Hz

@@ -5,13 +5,12 @@
 #include "esp_heap_caps.h"
 #include "comminication.h"
 
-static flight_data_t flight_data;
 static nav_data_t *nav_data_ptr;
 static states_t *state_ptr;
 static range_finder_t *range_ptr;
 static flight_t *flight_ptr;
 static config_t *config_ptr;
-
+static nav_config_t nav_config;
 static spi_transaction_t trans;
 static spi_device_handle_t handle;
 
@@ -57,39 +56,68 @@ void nav_comm_init(nav_data_t *nav, states_t *stt, range_finder_t *rng, flight_t
     memset(spi_heap_mem_send, 0, spi_trans_byte_size);
 }
 
-uint8_t *master_send_recv_nav_comm(uint8_t new_config_flag)
+uint8_t *master_send_recv_nav_comm(uint8_t send_data_type)
 {
-    // prepare packet to send
-    flight_data.range_cm = range_ptr->range_cm;
-    flight_data.arm_status = flight_ptr->arm_status;
 
-    if (new_config_flag == 1)
+    if (send_data_type == 0)
     {
-        flight_data.notch_1_freq = config_ptr->notch_1_freq;
-        flight_data.notch_2_freq = config_ptr->notch_2_freq;
-        flight_data.notch_1_bandwidth = config_ptr->notch_1_bandwidth;
-        flight_data.notch_2_bandwidth = config_ptr->notch_2_bandwidth;
-        flight_data.ahrs_filter_beta = config_ptr->ahrs_filter_beta;
-        flight_data.ahrs_filter_zeta = config_ptr->ahrs_filter_zeta;
-        flight_data.alt_filter_beta = config_ptr->alt_filter_beta;
-        flight_data.velz_filter_beta = config_ptr->velz_filter_beta;
-        flight_data.velz_filter_zeta = config_ptr->velz_filter_zeta;
-        flight_data.velxy_filter_beta = config_ptr->velxy_filter_beta;
-        flight_data.mag_declination_deg = config_ptr->mag_declination_deg;
-        flight_data.is_new_config = 1;
-    }
-    else
-    {
-        flight_data.is_new_config = 0;
+        spi_heap_mem_send[0] = SEND_HEADER_1;
+        spi_heap_mem_send[1] = (uint8_t)(range_ptr->range_cm >> 8);
+        spi_heap_mem_send[2] = (uint8_t)(range_ptr->range_cm);
+        spi_heap_mem_send[3] = flight_ptr->arm_status;
+
+        static uint8_t checksum_a, checksum_b;
+        static uint8_t size = 3;
+
+        checksum_generate(spi_heap_mem_send + 1, size, &checksum_a, &checksum_b);
+        spi_heap_mem_send[size + 1] = checksum_a;
+        spi_heap_mem_send[size + 2] = checksum_b;
+        spi_heap_mem_send[size + 3] = FOOTER;
     }
 
-    memcpy(spi_heap_mem_send + 1, &flight_data, sizeof(flight_data_t));
-    spi_heap_mem_send[0] = HEADER;
-    static uint8_t checksum_a, checksum_b;
-    checksum_generate(spi_heap_mem_send + 1, spi_trans_byte_size - 4, &checksum_a, &checksum_b);
-    spi_heap_mem_send[spi_trans_byte_size - 3] = checksum_a;
-    spi_heap_mem_send[spi_trans_byte_size - 2] = checksum_b;
-    spi_heap_mem_send[spi_trans_byte_size - 1] = FOOTER;
+    else if (send_data_type == 1)
+    {
+        nav_config.notch_1_freq = config_ptr->notch_1_freq;
+        nav_config.notch_2_freq = config_ptr->notch_2_freq;
+        nav_config.notch_1_bandwidth = config_ptr->notch_1_bandwidth;
+        nav_config.notch_2_bandwidth = config_ptr->notch_2_bandwidth;
+        nav_config.ahrs_filter_beta = config_ptr->ahrs_filter_beta;
+        nav_config.ahrs_filter_zeta = config_ptr->ahrs_filter_zeta;
+        nav_config.alt_filter_beta = config_ptr->alt_filter_beta;
+        nav_config.velz_filter_beta = config_ptr->velz_filter_beta;
+        nav_config.velz_filter_zeta = config_ptr->velz_filter_zeta;
+        nav_config.velxy_filter_beta = config_ptr->velxy_filter_beta;
+        nav_config.mag_declination_deg = config_ptr->mag_declination_deg;
+
+        spi_heap_mem_send[0] = SEND_HEADER_2;
+        memcpy(spi_heap_mem_send + 1, &nav_config, sizeof(nav_config_t));
+
+        static uint8_t checksum_a, checksum_b;
+        checksum_generate(spi_heap_mem_send + 1, sizeof(nav_config_t), &checksum_a, &checksum_b);
+
+        spi_heap_mem_send[sizeof(nav_config_t) + 1] = checksum_a;
+        spi_heap_mem_send[sizeof(nav_config_t) + 2] = checksum_b;
+        spi_heap_mem_send[sizeof(nav_config_t) + 3] = FOOTER;
+
+        printf("config is send to nav\n");
+    }
+    else if (send_data_type == 5)
+    {
+        const uint8_t *my_data = get_mag_data();
+        spi_heap_mem_send[0] = SEND_HEADER_3;
+        memcpy(spi_heap_mem_send + 1, my_data + 1, 48);
+
+        static uint8_t checksum_a, checksum_b;
+        checksum_generate(spi_heap_mem_send + 1, 48, &checksum_a, &checksum_b);
+
+        spi_heap_mem_send[48 + 1] = checksum_a;
+        spi_heap_mem_send[48 + 2] = checksum_b;
+        spi_heap_mem_send[48 + 3] = FOOTER;
+        printf("mag is send to nav\n");
+    }
+
+
+
     // Send data must be bigger than 8 and divisible by 4
     memset(&trans, 0, sizeof(trans));
     trans.length = 8 * spi_trans_byte_size; // 68 bytes
@@ -97,7 +125,7 @@ uint8_t *master_send_recv_nav_comm(uint8_t new_config_flag)
     trans.rx_buffer = spi_heap_mem_receive; // receive_buffer;
     spi_device_transmit(handle, &trans);
 
-    if (spi_heap_mem_receive[0] == HEADER && spi_heap_mem_receive[spi_trans_byte_size - 1] == FOOTER && checksum_verify(spi_heap_mem_receive, spi_trans_byte_size))
+    if (spi_heap_mem_receive[0] == RECV_HEADER && spi_heap_mem_receive[spi_trans_byte_size - 1] == FOOTER && checksum_verify(spi_heap_mem_receive, spi_trans_byte_size))
     {
         memcpy(nav_data_ptr, spi_heap_mem_receive + 1, sizeof(nav_data_t));
         state_ptr->pitch_deg = nav_data_ptr->pitch;
@@ -121,7 +149,7 @@ uint8_t *master_send_recv_nav_comm(uint8_t new_config_flag)
 static void checksum_generate(uint8_t *data, uint8_t size, uint8_t *cs1, uint8_t *cs2)
 {
     uint8_t checksum1 = 0, checksum2 = 0;
-    for (uint8_t i = 0; i < size - 2; i++)
+    for (uint8_t i = 0; i < size; i++)
     {
         checksum1 = checksum1 + data[i];
         checksum2 = checksum2 + checksum1;

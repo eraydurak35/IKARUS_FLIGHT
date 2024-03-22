@@ -1,9 +1,10 @@
 idf_component_register(SRCS 
+"motor_test.c"
 "blackbox.c"
 "ibus.c"
 "esc.c"
 "dshot_esc_encoder.c"
-"control_algorithm.c"
+"guidance_control.c"
 "comminication.c"
 "ublox.c"
 "tf_luna.c"

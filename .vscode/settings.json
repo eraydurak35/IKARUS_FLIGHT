@@ -32,6 +32,18 @@
         "nv_storage.h": "c",
         "ublox.h": "c",
         "ibus.h": "c",
-        "esc.h": "c"
+        "esc.h": "c",
+        "*.tcc": "c",
+        "ratio": "c",
+        "system_error": "c",
+        "array": "c",
+        "functional": "c",
+        "regex": "c",
+        "tuple": "c",
+        "type_traits": "c",
+        "utility": "c",
+        "bitset": "c",
+        "string_view": "c",
+        "initializer_list": "c"
     }
 }
