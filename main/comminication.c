@@ -16,6 +16,7 @@ static waypoint_t *waypoint_ptr = NULL;
 static uint8_t *new_data_recv_flag = NULL;
 static uint8_t *motor_test_num_ptr = NULL;
 static const uint8_t *mag_data;
+static const uint8_t *acc_data;
 
 static void espnow_receive_cb(const esp_now_recv_info_t *recv_info, const uint8_t *data, int len);
 static void espnow_send_cb(const uint8_t *mac_addr, esp_now_send_status_t status);
@@ -67,11 +68,12 @@ void comm_send_conf(config_t *conf)
 
 void comm_send_wp()
 {
-    uint8_t buffer[sizeof(waypoint_ptr->latitude) + sizeof(waypoint_ptr->longitude) + sizeof(waypoint_ptr->altitude) + 1];
+    uint8_t buffer[sizeof(waypoint_ptr->latitude) + sizeof(waypoint_ptr->longitude) + sizeof(waypoint_ptr->altitude) + sizeof(waypoint_ptr->end_of_mission_behaviour) + 1];
     buffer[0] = WP_HEADER;
     memcpy(buffer + 1, waypoint_ptr->latitude, sizeof(waypoint_ptr->latitude));
     memcpy(buffer + 1 + sizeof(waypoint_ptr->latitude), waypoint_ptr->longitude, sizeof(waypoint_ptr->longitude));
     memcpy(buffer + 1 + sizeof(waypoint_ptr->latitude) + sizeof(waypoint_ptr->longitude), waypoint_ptr->altitude, sizeof(waypoint_ptr->altitude));
+    buffer[226] = waypoint_ptr->end_of_mission_behaviour;
     esp_now_send(ground_station_mac_address, buffer, sizeof(buffer));
 }
 void comm_send_motor_test_result(float *result)
@@ -89,20 +91,18 @@ static void espnow_receive_cb(const esp_now_recv_info_t *recv_info, const uint8_
         save_config(config_ptr);
         *new_data_recv_flag = 1;
     }
-    else if (data[0] == 0xFD && len == 226)
+    else if (data[0] == 0xFD && len == 227) // 226
     {
         memcpy(waypoint_ptr->latitude, data + 1, sizeof(waypoint_ptr->latitude));
         memcpy(waypoint_ptr->longitude, data + sizeof(waypoint_ptr->longitude) + 1, sizeof(waypoint_ptr->longitude));
         memcpy(waypoint_ptr->altitude, data + (sizeof(waypoint_ptr->longitude) * 2) + 1, sizeof(waypoint_ptr->altitude));
+        waypoint_ptr->end_of_mission_behaviour = data[226];
         *new_data_recv_flag = 2;
     }
     else if (data[0] == 0xFC && len == 2)
     {
-        if (data[1] == 10)
-            *new_data_recv_flag = 3;
-        else if (data[1] == 20)
-            *new_data_recv_flag = 4;
-
+        if (data[1] == 10) *new_data_recv_flag = 3;
+        else if (data[1] == 20) *new_data_recv_flag = 4;
     }
     else if (data[0] == 0xFB && len == 49)
     {
@@ -113,6 +113,11 @@ static void espnow_receive_cb(const esp_now_recv_info_t *recv_info, const uint8_
     {
         *motor_test_num_ptr = data[1];
     }
+    else if (data[0] == 0xF9)
+    {
+        *new_data_recv_flag = 6;
+        acc_data = data;
+    }
 
 }
 static void espnow_send_cb(const uint8_t *mac_addr, esp_now_send_status_t status)
@@ -122,4 +127,8 @@ static void espnow_send_cb(const uint8_t *mac_addr, esp_now_send_status_t status
 const uint8_t *get_mag_data()
 {
     return mag_data;
+}
+const uint8_t *get_acc_data()
+{
+    return acc_data;
 }

@@ -11,6 +11,7 @@
 #define SEND_HEADER_1 0x10
 #define SEND_HEADER_2 0x11
 #define SEND_HEADER_3 0x12
+#define SEND_HEADER_4 0x13
 #define FOOTER 0x31
 #define RECV_HEADER 0x69
 

@@ -38,6 +38,7 @@
 #include "nav_comm.h"
 #include "filters.h"
 #include "tf_luna.h"
+#include "buzzer.h"
 #include "ublox.h"
 #include "uart.h"
 #include "gpio.h"
@@ -60,11 +61,15 @@ static telemetry_t telem;
 static range_finder_t range_finder;
 static gps_t gps;
 static ibus_t radio = {1500, 1500, 1000, 1500, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000};
-static waypoint_t waypoint = {{0}, {0}, {0}, -1, 1};
+static waypoint_t waypoint = {{0}, {0}, {0}, 0, 1, 0};
 static nav_data_t nav_data;
 static uint8_t is_new_gsa_data_recv_flag = 0;
 static uint8_t motor_test_number = 0;
 //static uint8_t flight_bb_buffer[sizeof(pid_bb) + 1];
+
+// body front surface area 0.012238 m2
+// drag coefficent 81.7126
+static void send_telemetry_data();
 
 void IRAM_ATTR timer1_callback(void *arg)
 {
@@ -85,7 +90,6 @@ void task_1(void *pvParameters)
     dshot_esc_init();
     comminication_init(&config, &waypoint, &is_new_gsa_data_recv_flag, &motor_test_number);
     read_config(&config);
-    //printf("%f, %f, %f, %f\n", config.alt_to_vel_gain, config.wp_threshold_cm, config.wp_heading_correct_gain, config.wp_dist_to_vel_gain);
     i2c_master_init(I2C_NUM_0, SDA1, SCL1, 400000, GPIO_PULLUP_DISABLE);
     control_init(&radio, &telem, &flight, &target, &state, &config, &waypoint, &gps, &pid_bb);
     nav_comm_init(&nav_data, &state, &range_finder, &flight, &config);
@@ -148,90 +152,20 @@ void task_1(void *pvParameters)
                 uint8_t ret = flight_mode_control();
                 if (is_sd_inserted == 1)
                 {
+                    // Arm detected
                     if (ret == 1)
                     {
                         is_ok_to_write_to_file = create_and_open_bin_file();
                     }
+                    // Disarm detected
                     else if (ret == 2)
                     {
                         close_bin_file();
                         is_ok_to_write_to_file = 0;
                     }
-                    
                 }
 
-                telem.battery_voltage = (get_bat_volt() * config.v_sens_gain) * 0.005f + telem.battery_voltage * 0.995f;
-                telem.pitch = state.pitch_deg;
-                telem.roll = state.roll_deg;
-                telem.heading = state.heading_deg;
-                telem.gyro_x_dps = state.pitch_dps * 100.0f;
-                telem.gyro_y_dps = state.roll_dps * 100.0f;
-                telem.gyro_z_dps = state.yaw_dps * 100.0f;
-                telem.acc_x_ms2 = nav_data.acc_x_ms2;
-                telem.acc_y_ms2 = nav_data.acc_y_ms2;
-                telem.acc_z_ms2 = nav_data.acc_z_ms2;
-                telem.imu_temperature = nav_data.imu_temperature;
-                telem.mag_x_mgauss = nav_data.mag_x_gauss;
-                telem.mag_y_mgauss = nav_data.mag_y_gauss;
-                telem.mag_z_mgauss = nav_data.mag_z_gauss;
-                telem.barometer_pressure = nav_data.barometer_pressure;
-                telem.barometer_temperature = nav_data.barometer_temperature;
-                telem.altitude = nav_data.baro_altitude;
-                telem.altitude_calibrated = nav_data.altitude;
-                telem.velocity_x_ms = nav_data.velocity_x_ms;
-                telem.velocity_y_ms = nav_data.velocity_y_ms;
-                telem.velocity_z_ms = nav_data.velocity_z_ms;
-                telem.target_pitch = target.pitch;
-                telem.target_roll = target.roll;
-                telem.target_heading = target.heading;
-                telem.target_pitch_dps = target.pitch_degs;
-                telem.target_roll_dps = target.roll_degs;
-                telem.target_yaw_dps = target.yaw_degs;
-                telem.tof_distance_1 = range_finder.range_cm;
-                telem.target_altitude = target.altitude;
-                telem.target_velocity_x_ms = target.velocity_x_ms;
-                telem.target_velocity_y_ms = target.velocity_y_ms;
-                telem.target_velocity_z_ms = target.velocity_z_ms;
-                telem.flow_quality = nav_data.flow_quality;
-                telem.flow_x_velocity = nav_data.flow_x_velocity_ms;
-                telem.flow_y_velocity = nav_data.flow_y_velocity_ms;
-                telem.gps_fix = gps.fix;
-                telem.gps_satCount = gps.satCount;
-                telem.gps_latitude = gps.latitude;
-                telem.gps_longitude = gps.longitude;
-                telem.gps_altitude_m = gps.altitude_mm;
-                telem.gps_northVel_ms = gps.northVel_mms;
-                telem.gps_eastVel_ms = gps.eastVel_mms;
-                telem.gps_downVel_ms = gps.downVel_mms;
-                telem.gps_headingOfMotion = gps.headingOfMotion;
-                telem.gps_hdop = gps.hdop;
-                telem.gps_vdop = gps.vdop;
-                telem.gps_latitude_origin = gps.latitude_origin;
-                telem.gps_longitude_origin = gps.longitude_origin;
-                telem.gps_altitude_origin = gps.altitude_origin_mm;
-                telem.target_latitude = target.latitude;
-                telem.target_longitude = target.longitude;
-                telem.velocity_ms_2d = sqrtf((state.vel_forward_ms * state.vel_forward_ms) + (state.vel_right_ms * state.vel_right_ms));
-                telem.tof_distance_2 = target.throttle;
-
-                // 0 full manual 1 altitude_hold 2 position_hold 3 alt+pos_hold 4 alt+pos+waypoint
-                if (flight.waypoint_mission_status == 1)
-                {
-                    telem.flight_mode = 4;
-                }
-                else if (flight.alt_hold_status == 1)
-                {
-                    if (flight.pos_hold_status == 1)
-                        telem.flight_mode = 3;
-                    else
-                        telem.flight_mode = 1;
-                }
-                else if (flight.pos_hold_status == 1)
-                    telem.flight_mode = 2;
-                else
-                    telem.flight_mode = 0;
-
-                comm_send_telem(&telem);
+                send_telemetry_data();
             }
         }
     }
@@ -266,81 +200,7 @@ void task_3(void *pvParameters)
     {
         if (xTaskNotifyWait(0, ULONG_MAX, &notification, portMAX_DELAY) == pdTRUE)
         {
-            if (notification == 1)
-            {
-                start_beep(440);
-                vTaskDelay(50 / portTICK_PERIOD_MS);
-                stop_beep();
-                vTaskDelay(50 / portTICK_PERIOD_MS);
-                start_beep(880);
-                vTaskDelay(50 / portTICK_PERIOD_MS);
-                stop_beep();
-                vTaskDelay(50 / portTICK_PERIOD_MS);
-                start_beep(1760);
-                vTaskDelay(50 / portTICK_PERIOD_MS);
-                stop_beep();
-                vTaskDelay(50 / portTICK_PERIOD_MS);
-            }
-            else if (notification == 2)
-            {
-                start_beep(880);
-                vTaskDelay(150 / portTICK_PERIOD_MS);
-                stop_beep();
-                vTaskDelay(50 / portTICK_PERIOD_MS);
-                start_beep(880);
-                vTaskDelay(50 / portTICK_PERIOD_MS);
-                stop_beep();
-                vTaskDelay(50 / portTICK_PERIOD_MS);
-                start_beep(1760);
-                vTaskDelay(50 / portTICK_PERIOD_MS);
-                stop_beep();
-                vTaskDelay(50 / portTICK_PERIOD_MS);
-            }
-            else if (notification == 3)
-            {
-                start_beep(1760);
-                vTaskDelay(50 / portTICK_PERIOD_MS);
-                stop_beep();
-                vTaskDelay(50 / portTICK_PERIOD_MS);
-                start_beep(880);
-                vTaskDelay(50 / portTICK_PERIOD_MS);
-                stop_beep();
-                vTaskDelay(50 / portTICK_PERIOD_MS);
-                start_beep(440);
-                vTaskDelay(50 / portTICK_PERIOD_MS);
-                stop_beep();
-                vTaskDelay(50 / portTICK_PERIOD_MS);
-            }
-            else if (notification == 4)
-            {
-                start_beep(1760);
-                vTaskDelay(150 / portTICK_PERIOD_MS);
-                stop_beep();
-                vTaskDelay(50 / portTICK_PERIOD_MS);
-                start_beep(880);
-                vTaskDelay(50 / portTICK_PERIOD_MS);
-                stop_beep();
-                vTaskDelay(50 / portTICK_PERIOD_MS);
-                start_beep(880);
-                vTaskDelay(50 / portTICK_PERIOD_MS);
-                stop_beep();
-                vTaskDelay(50 / portTICK_PERIOD_MS);
-            }
-            else if (notification == 5)
-            {
-                start_beep(1760);
-                vTaskDelay(150 / portTICK_PERIOD_MS);
-                stop_beep();
-                vTaskDelay(50 / portTICK_PERIOD_MS);
-                start_beep(880);
-                vTaskDelay(50 / portTICK_PERIOD_MS);
-                stop_beep();
-                vTaskDelay(50 / portTICK_PERIOD_MS);
-                start_beep(1760);
-                vTaskDelay(50 / portTICK_PERIOD_MS);
-                stop_beep();
-                vTaskDelay(50 / portTICK_PERIOD_MS);
-            }
+            play_notification(notification);
         }
     }
 }
@@ -360,4 +220,81 @@ void app_main(void)
     };
     esp_timer_create(&timer1_args, &timer1);
     esp_timer_start_periodic(timer1, 1000);
+}
+
+static void send_telemetry_data()
+{
+    telem.battery_voltage = (get_bat_volt() * config.v_sens_gain) * 0.005f + telem.battery_voltage * 0.995f;
+    telem.pitch = state.pitch_deg;
+    telem.roll = state.roll_deg;
+    telem.heading = state.heading_deg;
+    telem.gyro_x_dps = state.pitch_dps * 100.0f;
+    telem.gyro_y_dps = state.roll_dps * 100.0f;
+    telem.gyro_z_dps = state.yaw_dps * 100.0f;
+    telem.acc_x_ms2 = nav_data.acc_x_ms2;
+    telem.acc_y_ms2 = nav_data.acc_y_ms2;
+    telem.acc_z_ms2 = nav_data.acc_z_ms2;
+    telem.imu_temperature = nav_data.imu_temperature;
+    telem.mag_x_mgauss = nav_data.mag_x_gauss;
+    telem.mag_y_mgauss = nav_data.mag_y_gauss;
+    telem.mag_z_mgauss = nav_data.mag_z_gauss;
+    telem.barometer_pressure = nav_data.barometer_pressure;
+    telem.barometer_temperature = nav_data.barometer_temperature;
+    telem.altitude = nav_data.baro_altitude;
+    telem.altitude_calibrated = nav_data.altitude;
+    telem.velocity_x_ms = nav_data.velocity_x_ms;
+    telem.velocity_y_ms = nav_data.velocity_y_ms;
+    telem.velocity_z_ms = nav_data.velocity_z_ms;
+    telem.target_pitch = target.pitch;
+    telem.target_roll = target.roll;
+    telem.target_heading = target.heading;
+    telem.target_pitch_dps = target.pitch_degs;
+    telem.target_roll_dps = target.roll_degs;
+    telem.target_yaw_dps = target.yaw_degs;
+    telem.tof_distance_1 = range_finder.range_cm;
+    telem.target_altitude = target.altitude;
+    telem.target_velocity_x_ms = target.velocity_x_ms;
+    telem.target_velocity_y_ms = target.velocity_y_ms;
+    telem.target_velocity_z_ms = target.velocity_z_ms;
+    telem.flow_quality = nav_data.flow_quality;
+    telem.flow_x_velocity = nav_data.flow_x_velocity_ms;
+    telem.flow_y_velocity = nav_data.flow_y_velocity_ms;
+    telem.gps_fix = gps.fix;
+    telem.gps_satCount = gps.satCount;
+    telem.gps_latitude = gps.latitude;
+    telem.gps_longitude = gps.longitude;
+    telem.gps_altitude_m = gps.altitude_mm;
+    telem.gps_northVel_ms = gps.northVel_mms;
+    telem.gps_eastVel_ms = gps.eastVel_mms;
+    telem.gps_downVel_ms = gps.downVel_mms;
+    telem.gps_headingOfMotion = gps.headingOfMotion;
+    telem.gps_hdop = gps.hdop;
+    telem.gps_vdop = gps.vdop;
+    telem.is_gnss_sanity_check_ok = gnss_sanity_check();
+/*     telem.gps_latitude_origin = gps.latitude_origin;
+    telem.gps_longitude_origin = gps.longitude_origin;
+    telem.gps_altitude_origin = gps.altitude_origin_mm; */
+    telem.target_latitude = target.latitude;
+    telem.target_longitude = target.longitude;
+    telem.velocity_ms_2d = sqrtf((state.vel_forward_ms * state.vel_forward_ms) + (state.vel_right_ms * state.vel_right_ms));
+    telem.tof_distance_2 = target.throttle;
+
+    // 0 full manual 1 altitude_hold 2 position_hold 3 alt+pos_hold 4 alt+pos+waypoint
+    if (flight.waypoint_mission_status == 1)
+    {
+        telem.flight_mode = 4;
+    }
+    else if (flight.alt_hold_status == 1)
+    {
+        if (flight.pos_hold_status == 1)
+            telem.flight_mode = 3;
+        else
+            telem.flight_mode = 1;
+    }
+    else if (flight.pos_hold_status == 1)
+        telem.flight_mode = 2;
+    else
+        telem.flight_mode = 0;
+
+    comm_send_telem(&telem);
 }

@@ -15,4 +15,5 @@ idf_component_register(SRCS
 "i2c.c"
 "nv_storage.c"
 "uart.c"
+"buzzer.c"
 INCLUDE_DIRS ".")

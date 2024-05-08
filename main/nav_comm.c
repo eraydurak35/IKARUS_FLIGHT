@@ -74,7 +74,6 @@ uint8_t *master_send_recv_nav_comm(uint8_t send_data_type)
         spi_heap_mem_send[size + 2] = checksum_b;
         spi_heap_mem_send[size + 3] = FOOTER;
     }
-
     else if (send_data_type == 1)
     {
         nav_config.notch_1_freq = config_ptr->notch_1_freq;
@@ -98,8 +97,6 @@ uint8_t *master_send_recv_nav_comm(uint8_t send_data_type)
         spi_heap_mem_send[sizeof(nav_config_t) + 1] = checksum_a;
         spi_heap_mem_send[sizeof(nav_config_t) + 2] = checksum_b;
         spi_heap_mem_send[sizeof(nav_config_t) + 3] = FOOTER;
-
-        printf("config is send to nav\n");
     }
     else if (send_data_type == 5)
     {
@@ -113,7 +110,19 @@ uint8_t *master_send_recv_nav_comm(uint8_t send_data_type)
         spi_heap_mem_send[48 + 1] = checksum_a;
         spi_heap_mem_send[48 + 2] = checksum_b;
         spi_heap_mem_send[48 + 3] = FOOTER;
-        printf("mag is send to nav\n");
+    }
+    else if (send_data_type == 6)
+    {
+        const uint8_t *my_data = get_acc_data();
+        spi_heap_mem_send[0] = SEND_HEADER_4;
+        memcpy(spi_heap_mem_send + 1, my_data + 1, 8);
+
+        static uint8_t checksum_a, checksum_b;
+        checksum_generate(spi_heap_mem_send + 1, 8, &checksum_a, &checksum_b);
+
+        spi_heap_mem_send[8 + 1] = checksum_a;
+        spi_heap_mem_send[8 + 2] = checksum_b;
+        spi_heap_mem_send[8 + 3] = FOOTER;
     }
 
 

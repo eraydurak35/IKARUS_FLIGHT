@@ -19,6 +19,7 @@ void comm_send_telem(telemetry_t *telem);
 void comm_send_conf(config_t *conf);
 void comm_send_wp();
 const uint8_t *get_mag_data();
+const uint8_t *get_acc_data();
 void comm_send_motor_test_result(float *result);
 
 #endif

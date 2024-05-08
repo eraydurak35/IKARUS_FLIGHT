@@ -10,6 +10,29 @@
 
 typedef struct
 {
+    float distance_cm;
+    float distance_north_cm;
+    float distance_east_cm;
+    float bearing_deg;
+} target_location_t;
+
+typedef struct 
+{
+    float sample_rate;
+    float a0;
+    float a1;
+    float a2;
+    float b0;
+    float b1;
+    float b2;
+    float x1;
+    float x2;
+    float y1;
+    float y2;
+} biquad_lpf_t;
+
+typedef struct
+{
     float pitch_p_out;
     float roll_p_out;
     float yaw_p_out;
@@ -97,6 +120,7 @@ typedef struct
     uint8_t altitude[25];
     int8_t counter;
     uint8_t is_reached;
+    uint8_t end_of_mission_behaviour;
 } waypoint_t;
 
 typedef struct
@@ -139,11 +163,16 @@ typedef struct
     int32_t headingOfMotion;
     uint16_t hdop;
     uint16_t vdop;
-    int32_t latitude_origin;
-    int32_t longitude_origin;
-    int32_t altitude_origin_mm;
-    float longitude_scale;
 } gps_t;
+
+typedef struct
+{
+    int32_t latitude;
+    int32_t longitude;
+    int32_t altitude_mm;
+    float heading_deg;
+} home_point_t;
+
 
 typedef struct
 {
@@ -211,11 +240,11 @@ typedef struct
     float ahrs_filter_zeta;
     float alt_filter_beta;
     float mag_declination_deg;
-    //
+
     float velz_filter_beta;
     float velz_filter_zeta;
     float velxy_filter_beta;
-    //
+
     float alt_to_vel_gain;
     float wp_threshold_cm;
     float wp_heading_correct_gain;
@@ -289,6 +318,7 @@ typedef struct
     float distance_m_2d;
     float distance_m_3d;
     float velocity_ms_2d;
+    uint8_t is_gnss_sanity_check_ok;
 } __attribute__((packed)) telemetry_t;
 
 
@@ -301,6 +331,7 @@ typedef struct
     uint8_t waypoint_mission_status;
     uint8_t rth_status;
     uint8_t is_rth_done;
+    uint8_t is_takeoff_done;
 } flight_t;
 
 
